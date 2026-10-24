@@ -1,15 +1,22 @@
 import { useState, type FormEvent } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { signIn } from '../api'
 import { CrosshairIcon } from '../components/Icons'
 
-// Placeholder sign-in. Swap handleSubmit for the real auth call once it exists.
+// Joining creates a player; the browser remembers its private session token.
 export function LoginPage() {
-  const navigate = useNavigate()
   const [email, setEmail] = useState('')
+  const [error, setError] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
 
-  function handleSubmit(e: FormEvent) {
+  async function handleSubmit(e: FormEvent) {
     e.preventDefault()
-    navigate('/snipe')
+    setBusy(true)
+    try {
+      await signIn(email)
+      window.location.assign('/snipe')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally { setBusy(false) }
   }
 
   return (
@@ -23,17 +30,19 @@ export function LoginPage() {
       </div>
       <form className="form" onSubmit={handleSubmit}>
         <label className="field">
-          <span>School email</span>
+          <span>Display name</span>
           <input
-            type="email"
+            type="text"
+            maxLength={80}
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            placeholder="you@psu.edu"
-            autoComplete="email"
+            placeholder="Your name"
+            autoComplete="nickname"
             required
           />
         </label>
-        <button className="button button-primary button-block button-large">Continue</button>
+        {error && <p className="error">{error}</p>}
+        <button disabled={busy} className="button button-primary button-block button-large">{busy ? "Joining…" : "Continue"}</button>
       </form>
     </div>
   )

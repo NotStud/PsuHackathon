@@ -104,13 +104,19 @@ function CreateForm() {
   const navigate = useNavigate()
   const [name, setName] = useState('')
   const [cooldown, setCooldown] = useState(60)
+  const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
     setBusy(true)
-    const league = await createLeague(name, cooldown)
-    navigate(`/leagues/${league.id}`)
+    setError(null)
+    try {
+      const league = await createLeague(name, cooldown)
+      navigate(`/leagues/${league.id}`)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally { setBusy(false) }
   }
 
   return (
@@ -135,6 +141,7 @@ function CreateForm() {
           <option value={1440}>24 hours</option>
         </select>
       </label>
+      {error && <p className="error">{error}</p>}
       <button className="button button-primary" disabled={busy || !name.trim()}>
         {busy ? 'Creating…' : 'Create league'}
       </button>

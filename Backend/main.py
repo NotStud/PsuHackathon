@@ -10,7 +10,8 @@ from sqlalchemy import update
 from sqlmodel import Session, SQLModel, select
 
 from database import create_db_and_tables, get_session
-from models import Player, Game, GamePlayer, Snipe
+from models import Player, Game, GamePlayer
+from league_api import router
 
 
 @asynccontextmanager
@@ -20,15 +21,19 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(lifespan=lifespan)
-STATIC_DIR = Path(__file__).resolve().parent / "static"
-app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+app.include_router(router)
+UI_DIR = Path(__file__).resolve().parent / "ui" / "dist"
+if (UI_DIR / "assets").is_dir():
+    app.mount("/assets", StaticFiles(directory=UI_DIR / "assets"), name="assets")
 
 SessionDep = Annotated[Session, Depends(get_session)]
 
 
 @app.get("/")
 def home():
-    return FileResponse(STATIC_DIR / "index.html")
+    if not (UI_DIR / "index.html").is_file():
+        raise HTTPException(503, "Build the UI with: cd ui && npm install && npm run build")
+    return FileResponse(UI_DIR / "index.html")
 
 
 @app.post("/players")
@@ -142,3 +147,10 @@ def game_state(game_id: int, session: SessionDep):
         "game": game,
         "players": players
     }
+
+
+@app.get("/{path:path}")
+def ui_route(path: str):
+    if path.startswith(("api/", "players/", "games/")):
+        raise HTTPException(404, "Not found")
+    return home()

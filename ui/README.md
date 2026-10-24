@@ -5,7 +5,7 @@ Mobile-first web front end for the Snipe app. Built with React + TypeScript + Vi
 ## Run it
 
 ```bash
-npm install
+npm ci
 npm run dev        # http://localhost:5173 (add --host to open it on your phone over Wi-Fi)
 npm run build      # type-check + production build
 ```
@@ -14,38 +14,38 @@ npm run build      # type-check + production build
 
 | Route | File | What it does |
 | --- | --- | --- |
-| `/login` | `src/pages/LoginPage.tsx` | Placeholder sign-in |
+| `/login` | `src/pages/LoginPage.tsx` | Display name registration |
 | `/leagues` | `src/pages/LeaguesPage.tsx` | Your leagues, join with code, create league |
 | `/leagues/:id` | `src/pages/LeaguePage.tsx` | Leaderboard + recent snipes feed |
 | `/snipe` | `src/pages/SnipePage.tsx` | Full-screen camera: shoot first, then tap who you got → confirm. The app opens here. |
 | `/profile` | `src/pages/ProfilePage.tsx` | Totals and per-league rank/cooldown |
 
-## Hooking up the backend
+## Backend connection
 
-All data goes through `src/api/index.ts`, which currently uses in-memory mock data
-(`src/api/mockData.ts`). Every function is already `async`, so swapping in real
-`fetch()` calls shouldn't require changes to the pages. The data shapes live in
-`src/types.ts`; agree on these with the backend team.
+`src/api/index.ts` calls the FastAPI `/api` endpoints. Start the API on port 8000;
+Vite proxies requests there during development. FastAPI serves `ui/dist` after
+`npm run build`.
 
-Things the UI expects the backend to enforce:
-- A player on cooldown can't be sniped (`Member.cooldownUntil`).
-- You can't snipe yourself.
-- Points per snipe and cooldown length are per-league settings.
+From the repository root, configure `DATABASE_URL` in `.env` using the Supabase
+PostgreSQL session pooler connection string, then start the API:
 
-## Hooking up the camera
-
-The camera is being built on a separate branch. `src/camera/CameraView.tsx` is a
-stand-in that does not touch the camera; it returns a placeholder image so the rest
-of the snipe flow can be used. Replace that file when merging. The snipe screen
-only relies on this contract:
-
-```tsx
-<CameraView ref={cameraRef} />            // fills its parent with a live preview
-await cameraRef.current.capture()         // → media URL string, or null if cancelled
+```bash
+.venv/bin/python -m uvicorn main:app --reload
 ```
 
-The snipe screen draws the shutter, reticle, league picker and target sheet on top,
-so the camera component should render only the preview.
+The API creates its tables on startup. Database credentials stay on the server.
+
+The login page registers a display name and remembers a private browser session.
+League data, membership, snipes, scores and cooldowns persist in PostgreSQL.
+There is no sample-data fallback; new players start with an empty league list.
+
+## Camera
+
+`src/camera/CameraView.tsx` uses the device camera and captures real JPEG images.
+Allow camera access in the browser. Use HTTPS when opening the app on a phone;
+localhost also supports camera access for desktop development. Photos are sent
+to the backend as image data URLs and stored with the snipe. Camera tracks stop
+when leaving the screen. No generated proof images are used.
 
 ## Styling
 

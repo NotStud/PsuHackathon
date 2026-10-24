@@ -38,7 +38,7 @@ def create_db_and_tables():
 
     with engine.begin() as connection:
         SQLModel.metadata.create_all(connection)
-        for table in ("players", "games", "game_players", "snipes"):
+        for table in SQLModel.metadata.tables:
             connection.execute(text(f'ALTER TABLE public."{table}" ENABLE ROW LEVEL SECURITY'))
 
 

@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom'
-import { getCurrentUser, getLeaderboard, getMyLeagues } from '../api'
+import { getCurrentUser, getLeaderboard, getMyLeagues, signOut } from '../api'
 import { Avatar } from '../components/Avatar'
 import { CooldownBadge } from '../components/CooldownBadge'
 import { PageHeader } from '../components/PageHeader'
@@ -33,6 +33,7 @@ export function ProfilePage() {
     <>
       <PageHeader title="Profile" />
 
+      {(user.error || stats.error) && <p className="error">{user.error || stats.error}</p>}
       {user.data && (
         <div className="profile-hero">
           <Avatar user={user.data} size={80} />
@@ -73,7 +74,7 @@ export function ProfilePage() {
         ))}
       </ul>
 
-      <button className="button button-block" onClick={() => navigate('/login')}>
+      <button className="button button-block" onClick={() => { signOut(); navigate('/login') }}>
         Sign out
       </button>
     </>

@@ -1,33 +1,77 @@
-// Stand-in for the camera, which is being built on a separate branch.
-// It does NOT access the camera. It only keeps the snipe screen working until
-// the real CameraView is merged in. The real one should keep this contract:
-//   - render a full-bleed live preview (it fills its parent)
-//   - expose `capture()` via ref, resolving to a media URL, or null if cancelled
-// The snipe screen owns the shutter button and everything drawn on top.
-
-import { useImperativeHandle, type Ref } from 'react'
+import { useEffect, useImperativeHandle, useRef, useState, type Ref } from 'react'
 
 export interface CameraHandle {
   capture: () => Promise<string | null>
 }
 
-const PLACEHOLDER_SHOT =
-  'data:image/svg+xml,' +
-  encodeURIComponent(
-    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 400">
-      <rect width="300" height="400" fill="#2a2a33"/>
-      <text x="150" y="205" fill="#9a9aa8" font-family="system-ui" font-size="16" text-anchor="middle">Placeholder shot</text>
-    </svg>`,
-  )
+/** Live device preview; capture returns image bytes that the backend can persist. */
+export function CameraView({ ref, onReady }: {
+  ref: Ref<CameraHandle>
+  onReady?: (ready: boolean) => void
+}) {
+  const videoRef = useRef<HTMLVideoElement>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [ready, setReady] = useState(false)
 
-export function CameraView({ ref }: { ref: Ref<CameraHandle> }) {
+  useEffect(() => {
+    let cancelled = false
+    let stream: MediaStream | undefined
+    const video = videoRef.current
+
+    async function start() {
+      try {
+        if (!navigator.mediaDevices?.getUserMedia) {
+          throw new Error('Camera access requires HTTPS or localhost and a supported browser.')
+        }
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { ideal: 'environment' } },
+          audio: false,
+        })
+        if (cancelled) {
+          stream.getTracks().forEach((track) => track.stop())
+          return
+        }
+        if (video) {
+          video.srcObject = stream
+          await video.play()
+        }
+      } catch (err) {
+        stream?.getTracks().forEach((track) => track.stop())
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : 'Unable to open the camera.')
+          setReady(false)
+        }
+      }
+    }
+    void start()
+    return () => {
+      cancelled = true
+      stream?.getTracks().forEach((track) => track.stop())
+      if (video) video.srcObject = null
+    }
+  }, [])
+
+  useEffect(() => { onReady?.(ready) }, [ready, onReady])
+
   useImperativeHandle(ref, () => ({
-    capture: () => Promise.resolve(PLACEHOLDER_SHOT),
+    capture: async () => {
+      const video = videoRef.current
+      if (!ready || !video?.videoWidth || !video.videoHeight) return null
+      const canvas = document.createElement('canvas')
+      const scale = Math.min(1, 1600 / Math.max(video.videoWidth, video.videoHeight))
+      canvas.width = Math.round(video.videoWidth * scale)
+      canvas.height = Math.round(video.videoHeight * scale)
+      const context = canvas.getContext('2d')
+      if (!context) return null
+      context.drawImage(video, 0, 0, canvas.width, canvas.height)
+      return canvas.toDataURL('image/jpeg', 0.8)
+    },
   }))
 
   return (
     <div className="camera">
-      <p className="camera-hint">Camera preview goes here</p>
+      <video ref={videoRef} autoPlay muted playsInline onPlaying={() => setReady(true)} />
+      {!ready && <p className="camera-hint" role="status">{error ?? 'Opening camera…'}</p>}
     </div>
   )
 }

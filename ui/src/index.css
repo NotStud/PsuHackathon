@@ -666,3 +666,16 @@ ol {
   background: var(--accent);
   color: var(--accent-text);
 }
+
+.snipe-error {
+  position: absolute;
+  top: calc(env(safe-area-inset-top) + 76px);
+  left: 16px;
+  right: 16px;
+  z-index: 2;
+  padding: 12px;
+  background: #7f1d1d;
+  color: #fff;
+  border-radius: 8px;
+}
+.shutter:disabled { opacity: 0.4; cursor: default; }

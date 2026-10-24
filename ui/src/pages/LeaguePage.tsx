@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { getFeed, getLeaderboard, getLeague } from '../api'
-import { CURRENT_USER_ID } from '../api/mockData'
+import { getCurrentUser } from '../api'
 import { Avatar } from '../components/Avatar'
 import { CooldownBadge } from '../components/CooldownBadge'
 import { CrosshairIcon } from '../components/Icons'
@@ -15,6 +15,7 @@ type Tab = 'leaderboard' | 'feed'
 export function LeaguePage() {
   const { leagueId = '' } = useParams()
   const [tab, setTab] = useState<Tab>('leaderboard')
+  const me = useAsync(getCurrentUser, [])
   const league = useAsync(() => getLeague(leagueId), [leagueId])
   const board = useAsync(() => getLeaderboard(leagueId), [leagueId])
   const feed = useAsync(() => getFeed(leagueId), [leagueId])
@@ -46,8 +47,9 @@ export function LeaguePage() {
         </button>
       </div>
 
+      {(board.error || feed.error) && <p className="error">{board.error || feed.error}</p>}
       {tab === 'leaderboard' ? (
-        <Leaderboard members={board.data} loading={board.loading} />
+        <Leaderboard members={board.data} loading={board.loading} currentUserId={me.data?.id} />
       ) : (
         <Feed snipes={feed.data} members={board.data} loading={feed.loading} />
       )}
@@ -55,12 +57,12 @@ export function LeaguePage() {
   )
 }
 
-function Leaderboard({ members, loading }: { members: Member[] | null; loading: boolean }) {
+function Leaderboard({ members, loading, currentUserId }: { members: Member[] | null; loading: boolean; currentUserId?: string }) {
   if (loading && !members) return <p className="muted">Loading…</p>
   return (
     <ol className="list">
       {members?.map((m, i) => (
-        <li key={m.user.id} className={m.user.id === CURRENT_USER_ID ? 'row row-me' : 'row'}>
+        <li key={m.user.id} className={m.user.id === currentUserId ? 'row row-me' : 'row'}>
           <span className="rank">{i + 1}</span>
           <Avatar user={m.user} />
           <div className="row-main">

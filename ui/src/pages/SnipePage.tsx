@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { getLeaderboard, getMyLeagues, submitSnipe } from '../api'
-import { CURRENT_USER_ID } from '../api/mockData'
+import { getCurrentUser } from '../api'
 import { CameraView, type CameraHandle } from '../camera/CameraView'
 import { Avatar } from '../components/Avatar'
 import { CooldownBadge } from '../components/CooldownBadge'
 import { CloseIcon, CrosshairIcon } from '../components/Icons'
-import { useAsync } from '../hooks'
+import { useAsync, useNow } from '../hooks'
 import type { League, Member } from '../types'
 
 const LAST_LEAGUE_KEY = 'snipe:lastLeague'
@@ -43,7 +43,9 @@ export function SnipePage() {
   const navigate = useNavigate()
   const [params, setParams] = useSearchParams()
   const cameraRef = useRef<CameraHandle>(null)
+  const [cameraReady, setCameraReady] = useState(false)
 
+  const me = useAsync(getCurrentUser, [])
   const leagues = useAsync(getMyLeagues, [])
   const league = pickLeague(params.get('league'), leagues.data)
   const board = useAsync(
@@ -58,14 +60,16 @@ export function SnipePage() {
   const [error, setError] = useState<string | null>(null)
   const [done, setDone] = useState<Member | null>(null)
 
+  const now = useNow()
   // Players you can hit right now come first.
   const targets = (board.data ?? [])
-    .filter((m) => m.user.id !== CURRENT_USER_ID)
+    .filter((m) => me.data && m.user.id !== me.data.id)
+    .map((m) => ({ ...m, cooldownUntil: m.cooldownUntil && Date.parse(m.cooldownUntil) > now ? m.cooldownUntil : null }))
     .sort((a, b) => Number(Boolean(a.cooldownUntil)) - Number(Boolean(b.cooldownUntil)))
   const target = targets.find((m) => m.user.id === targetId)
 
   async function shoot() {
-    if (shot) return
+    if (shot || !cameraReady || !league || board.loading || !me.data) return
     navigator.vibrate?.(40)
     const url = await cameraRef.current?.capture()
     if (!url) return
@@ -87,7 +91,7 @@ export function SnipePage() {
   })
 
   async function confirm() {
-    if (!league || !target) return
+    if (!league || !target || !shot || submitting) return
     setSubmitting(true)
     setError(null)
     try {
@@ -118,7 +122,8 @@ export function SnipePage() {
 
   return (
     <div className="snipe-screen">
-      <CameraView ref={cameraRef} />
+      <CameraView ref={cameraRef} onReady={setCameraReady} />
+      {(leagues.error || board.error || me.error) && <p className="snipe-error" role="alert">{leagues.error || board.error || me.error}</p>}
       {shot && <img className="snipe-shot" src={shot} alt="Your shot" />}
       {flash && <div className="snipe-flash" />}
 
@@ -157,7 +162,7 @@ export function SnipePage() {
                 Join a league to start sniping
               </Link>
             ) : (
-              <button className="shutter" onClick={shoot} aria-label="Take the shot" />
+              <button className="shutter" disabled={!cameraReady || !league || board.loading || !me.data} onClick={shoot} aria-label="Take the shot" />
             )}
           </div>
         </>
@@ -172,6 +177,7 @@ export function SnipePage() {
             </button>
           </div>
           {board.loading && !board.data && <p className="muted">Loading players…</p>}
+          {!board.loading && !board.error && targets.length === 0 && <p className="muted">No other players yet. Share the league code to invite friends.</p>}
           <ul className="target-grid">
             {targets.map((m) => (
               <li key={m.user.id}>
