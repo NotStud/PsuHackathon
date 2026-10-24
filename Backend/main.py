@@ -35,7 +35,7 @@ SessionDep = Annotated[Session, Depends(get_session)]
 def home():
     if not (UI_DIR / "index.html").is_file():
         raise HTTPException(503, "Build the UI with: cd Front-End && npm install && npm run build")
-    return FileResponse(UI_DIR / "index.html")
+    return FileResponse(UI_DIR / "index.html", headers={"Cache-Control": "no-store"})
 
 
 @app.post("/players", dependencies=[Depends(current_player)])

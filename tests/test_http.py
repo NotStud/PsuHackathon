@@ -36,6 +36,7 @@ class HttpTests(unittest.TestCase):
     def test_ui_and_api_lifecycle(self):
         home = self.client.get('/')
         self.assertEqual(home.status_code, 200)
+        self.assertEqual(home.headers["cache-control"], "no-store")
         self.assertIn('<div id="root">', home.text)
         import re
         assets = re.findall(r'(?:src|href)="(/assets/[^"]+)"', home.text)
