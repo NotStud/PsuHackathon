@@ -78,6 +78,67 @@ class Game:
         return {'cooldown_until': (last_shot+COOLDOWN_SECONDS if last_shot is not None else 0),
                 'immune_until': (last_hit+IMMUNITY_SECONDS if last_hit is not None else 0)}
 
+    def _get_bounty_player_id(self, c, round_info, at):
+        """Divides round duration by player count and assigns the bounty target deterministically."""
+        players = [row['id'] for row in c.execute('SELECT id FROM players ORDER BY id').fetchall()]
+        if not players:
+            return None
+        starts = round_info['starts']
+        ends = round_info['ends']
+        duration = ends - starts
+        if duration <= 0:
+            return players[0]
+        slot_duration = duration / len(players)
+        elapsed = max(0, at - starts)
+        index = int(elapsed // slot_duration)
+        if index >= len(players):
+            index = len(players) - 1
+        return players[index]
+
+    def _compute_round_scores(self, c, round_id, round_info=None):
+        """Chronologically processes valid hits to calculate scores and hit point values."""
+        if round_info is None:
+            round_info = c.execute('SELECT * FROM rounds WHERE id=?', (round_id,)).fetchone()
+
+        players = [row['id'] for row in c.execute('SELECT id FROM players ORDER BY id').fetchall()]
+        scores = {pid: 0 for pid in players}
+        hit_points = {}
+
+        hits = c.execute(
+            "SELECT * FROM hit_details WHERE round_id=? AND status!='reversed' ORDER BY at ASC, id ASC",
+            (round_id,)
+        ).fetchall()
+
+        for h in hits:
+            shooter = h['shooter']
+            target = h['target']
+            hit_time = h['at']
+
+            if shooter not in scores:
+                scores[shooter] = 0
+            if target not in scores:
+                scores[target] = 0
+
+            # Determine bounty status at time of hit
+            bounty_id = self._get_bounty_player_id(c, round_info, hit_time)
+            is_bounty = (target == bounty_id)
+
+            # Determine if target was in 1st place prior to this hit
+            max_score = max(scores.values()) if scores else 0
+            is_first_place = (scores[target] == max_score)
+
+            pts = 1
+            if is_bounty:
+                pts += 2
+            if is_first_place:
+                pts += 2
+
+            hit_points[h['id']] = pts
+            scores[shooter] += pts
+            scores[target] -= 1
+
+        return scores, hit_points
+
     def record_hit(self, shooter, target, clip, request_id):
         if not isinstance(request_id, str) or not 1 <= len(request_id) <= 100:
             raise RuleError('A request_id of 1–100 characters is required.')
@@ -88,7 +149,7 @@ class Game:
             if old:
                 if old['target'] != target:
                     raise RuleError('This request ID was already used for another target.')
-                return dict(old)
+                return self._hit(c, old['id'])
             if shooter == target:
                 raise RuleError('You cannot hit yourself.')
             for pid in (shooter,target):
@@ -108,7 +169,13 @@ class Game:
         hit = c.execute('SELECT * FROM hit_details WHERE id=?', (hit_id,)).fetchone()
         if not hit:
             raise RuleError('Hit not found.')
-        return dict(hit)
+        res = dict(hit)
+        if res['status'] != 'reversed':
+            _, hit_pts = self._compute_round_scores(c, res['round_id'])
+            res['points'] = hit_pts.get(hit_id, 1)
+        else:
+            res['points'] = 0
+        return res
 
     def challenge_hit(self, player, hit_id, reason):
         """Only the recorded target may challenge. Pending hits still count."""
@@ -150,21 +217,28 @@ class Game:
             c.execute('BEGIN IMMEDIATE')
             now = self.clock()
             r = dict(self._round(c,now))
+            bounty_id = self._get_bounty_player_id(c, r, now)
+            scores, hit_pts = self._compute_round_scores(c, r['id'], r)
+
             players = [dict(p) for p in c.execute('SELECT id,name FROM players ORDER BY name')]
             for p in players:
                 p.update(self._timers(c,p['id'],now))
-                # +1 for each outgoing hit, -1 for each incoming hit this round.
-                # Pending challenges count; reversed hits affect neither player.
-                p['score'] = c.execute('''SELECT COALESCE(SUM(
-                    CASE WHEN shooter=? THEN 1 ELSE 0 END
-                    - CASE WHEN target=? THEN 1 ELSE 0 END), 0)
-                    FROM hit_details WHERE round_id=? AND status!='reversed' ''',
-                    (p['id'], p['id'], r['id'])).fetchone()[0]
+                p['score'] = scores.get(p['id'], 0)
+                p['is_bounty'] = (p['id'] == bounty_id)
+
             hits = [dict(h) for h in c.execute('SELECT * FROM hit_details WHERE round_id=? ORDER BY at DESC, id DESC LIMIT 100',(r['id'],))]
-            # Include older incoming hits and pending challenges across rounds so
-            # rollover/the public feed's 100-hit limit cannot hide a disputed shot.
+            for h in hits:
+                h['points'] = hit_pts.get(h['id'], 0) if h['status'] != 'reversed' else 0
+
             my_hits = [dict(h) for h in c.execute('SELECT * FROM hit_details WHERE target=? ORDER BY at DESC, id DESC', (player,))]
+            for h in my_hits:
+                h['points'] = hit_pts.get(h['id'], 0) if h['status'] != 'reversed' else 0
+
             challenges = [dict(h) for h in c.execute("SELECT * FROM hit_details WHERE status='challenged' ORDER BY challenged_at, id")]
+            for h in challenges:
+                h['points'] = hit_pts.get(h['id'], 0)
+
+            r['bounty_player_id'] = bounty_id
             return dict(server_time=now,round=r,me=player,players=players,hits=hits,
                         my_hits=my_hits, pending_challenges=challenges,
                         notifications=my_hits[:100])
