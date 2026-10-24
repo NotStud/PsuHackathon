@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Snipe · Scoreboard</title>
+<link rel="stylesheet" href="/static/style.css">
+<script src="/static/app.js" defer></script>
+</head>
+<body>
+<main>
+<header><a class="brand" href="/">◎ SNIPE<span>GAME CONTROL</span></a><span id="connection" role="status">Connecting…</span></header>
+<section class="intro"><p class="eyebrow">EVERY POINT COUNTS</p><h1>The scoreboard.</h1><p>Add your crew. Track the action. Keep the score.</p></section>
+<div id="error" role="alert" hidden></div>
+<section class="toolbar" aria-label="Game controls"><label>Active game <select id="game" aria-label="Select game"></select></label><button id="new-game" class="secondary">+ New game</button></section>
+<div class="layout">
+<section class="board"><div class="section-heading"><div><h2>Leaderboard</h2><p id="summary">Loading players…</p></div><button id="reset-all" class="quiet">Reset all scores</button></div><div id="players"></div></section>
+<aside><section class="panel"><span class="small-icon">＋</span><h2>Add a player</h2><p>Bring someone new into the game.</p><form id="add-player"><label for="name">Player name</label><input id="name" name="name" maxlength="80" placeholder="e.g. Alex" required autocomplete="off"><button type="submit">Add to game <span>↗</span></button></form><div id="registered-wrap" hidden><label for="registered">Or add a registered player</label><div class="join"><select id="registered"></select><button id="join" class="secondary">Add</button></div></div></section><p class="note"><span>●</span> Scores are saved automatically.<br>Open this page on another device to follow along.</p></aside>
+</div><footer>SNIPE / LIVE SCOREBOARD <span>Stay sharp. Have fun.</span></footer>
+</main>
+</body></html>

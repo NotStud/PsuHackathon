@@ -1,0 +1,144 @@
+
+from contextlib import asynccontextmanager
+from typing import Annotated
+from pathlib import Path
+
+from fastapi import FastAPI, Depends, HTTPException
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
+from sqlalchemy import update
+from sqlmodel import Session, SQLModel, select
+
+from database import create_db_and_tables, get_session
+from models import Player, Game, GamePlayer, Snipe
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    create_db_and_tables()
+    yield
+
+
+app = FastAPI(lifespan=lifespan)
+STATIC_DIR = Path(__file__).resolve().parent / "static"
+app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+
+SessionDep = Annotated[Session, Depends(get_session)]
+
+
+@app.get("/")
+def home():
+    return FileResponse(STATIC_DIR / "index.html")
+
+
+@app.post("/players")
+def create_player(name: str, session: SessionDep):
+    name = name.strip()
+    if not name or len(name) > 80:
+        raise HTTPException(422, "Player name must contain 1–80 characters")
+    player = Player(display_name=name)
+
+    session.add(player)
+    session.commit()
+    session.refresh(player)
+
+    return player
+
+
+@app.get("/players")
+def get_players(session: SessionDep):
+    return session.exec(select(Player)).all()
+
+
+@app.post("/games")
+def create_game(session: SessionDep):
+    game = Game(status="waiting", out_duration_seconds=30)
+
+    session.add(game)
+    session.commit()
+    session.refresh(game)
+
+    return game
+
+
+@app.get("/games")
+def get_games(session: SessionDep):
+    return session.exec(select(Game).order_by(Game.id.desc())).all()
+
+
+@app.post("/games/{game_id}/players/{player_id}/increment")
+def increment_score(game_id: int, player_id: int, session: SessionDep):
+    result = session.execute(
+        update(GamePlayer)
+        .where(GamePlayer.game_id == game_id, GamePlayer.player_id == player_id)
+        .values(score=GamePlayer.score + 1)
+    )
+    if result.rowcount == 0:
+        raise HTTPException(404, "Player is not in this game")
+    session.commit()
+    return session.get(GamePlayer, (game_id, player_id))
+
+
+@app.post("/games/{game_id}/players/{player_id}/reset")
+def reset_score(game_id: int, player_id: int, session: SessionDep):
+    player = session.get(GamePlayer, (game_id, player_id))
+    if not player:
+        raise HTTPException(404, "Player is not in this game")
+    player.score = 0
+    session.add(player)
+    session.commit()
+    session.refresh(player)
+    return player
+
+
+@app.post("/games/{game_id}/reset")
+def reset_scores(game_id: int, session: SessionDep):
+    if not session.get(Game, game_id):
+        raise HTTPException(404, "Game not found")
+    session.execute(update(GamePlayer).where(GamePlayer.game_id == game_id).values(score=0))
+    session.commit()
+    return {"message": "All scores reset"}
+
+
+@app.post("/games/{game_id}/join")
+def join_game(game_id: int, player_id: int, session: SessionDep):
+    game = session.get(Game, game_id)
+    player = session.get(Player, player_id)
+
+    if not game or not player:
+        raise HTTPException(404, "Game or player not found")
+
+    if game.status != "waiting":
+        raise HTTPException(400, "Game is not accepting players")
+
+    existing = session.get(GamePlayer, (game_id, player_id))
+    if existing:
+        raise HTTPException(400, "Player already joined")
+
+    game_player = GamePlayer(
+        game_id=game_id,
+        player_id=player_id
+    )
+
+    session.add(game_player)
+    session.commit()
+    session.refresh(game_player)
+
+    return game_player
+
+
+@app.get("/games/{game_id}/state")
+def game_state(game_id: int, session: SessionDep):
+    game = session.get(Game, game_id)
+
+    if not game:
+        raise HTTPException(404, "Game not found")
+
+    players = session.exec(
+        select(GamePlayer).where(GamePlayer.game_id == game_id)
+    ).all()
+
+    return {
+        "game": game,
+        "players": players
+    }
