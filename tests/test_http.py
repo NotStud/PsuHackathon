@@ -49,7 +49,7 @@ class HttpTests(unittest.TestCase):
         auth = {'Authorization': 'Bearer ' + alice['token']}
         bob_auth = {'Authorization': 'Bearer ' + bob['token']}
         self.assertEqual(self.client.get('/api/me', headers=auth).json(), alice['user'])
-        result = self.client.post('/api/leagues', json={'name': 'HTTP League', 'cooldownMinutes': 15}, headers=auth)
+        result = self.client.post('/api/leagues', json={'name': 'HTTP League', 'cooldownMinutes': 15, 'pointsPerSnipe': 10, 'bountyBonusPoints': 0, 'kingBonusPoints': 0, 'shooterCooldownMinutes': 0}, headers=auth)
         self.assertEqual(result.status_code, 200, result.text)
         league = result.json()
         self.assertEqual(league['cooldownMinutes'], 15)
@@ -82,7 +82,7 @@ class HttpTests(unittest.TestCase):
         self.assertEqual(signup.status_code, 200, signup.text)
         original = signup.json()
         headers = {'Authorization': 'Bearer ' + original['token']}
-        league = self.client.post('/api/leagues', json={'name': 'Saved League', 'cooldownMinutes': 15}, headers=headers).json()
+        league = self.client.post('/api/leagues', json={'name': 'Saved League', 'cooldownMinutes': 15, 'pointsPerSnipe': 10, 'bountyBonusPoints': 0, 'kingBonusPoints': 0, 'shooterCooldownMinutes': 0}, headers=headers).json()
         with Session(self.engine) as session:
             account = session.exec(select(Account)).one()
             self.assertEqual(account.email, 'player@example.com')
@@ -157,3 +157,35 @@ class HttpTests(unittest.TestCase):
         for _ in range(5):
             self.assertEqual(self.client.post('/api/session', json={'email': 'lock@example.com', 'password': 'wrong'}).status_code, 401)
         self.assertEqual(self.client.post('/api/session', json={'email': 'lock@example.com', 'password': 'long-password-123'}).status_code, 429)
+
+    def test_merged_league_rules_with_account_authentication(self):
+        players = []
+        for name in ['Alice', 'Bob', 'Charlie']:
+            result = self.client.post('/api/signup', json={
+                'name': name, 'email': name.lower() + '@example.com', 'password': 'test-password-123',
+            }).json()
+            players.append((result['user']['id'], {'Authorization': 'Bearer ' + result['token']}))
+        alice, bob, charlie = players
+        league = self.client.post('/api/leagues', headers=alice[1], json={
+            'name': 'Merged Rules', 'cooldownMinutes': 15, 'shooterCooldownMinutes': 10,
+            'pointsPerSnipe': 2, 'bountyBonusPoints': 4, 'kingBonusPoints': 3,
+        }).json()
+        for _, headers in [bob, charlie]:
+            self.assertEqual(self.client.post('/api/leagues/join', headers=headers, json={'joinCode': league['joinCode']}).status_code, 200)
+        base = '/api/leagues/' + league['id']
+        shot = {'targetId': int(alice[0]), 'requestId': 'merged-shot'}
+        response = self.client.post(base + '/snipes', headers=bob[1], json=shot)
+        self.assertEqual(response.status_code, 200, response.text)
+        hit = response.json()
+        self.assertEqual(hit['points'], 9)
+        retry = self.client.post(base + '/snipes', headers=bob[1], json=shot)
+        self.assertEqual(retry.json()['id'], hit['id'])
+        self.assertEqual(self.client.post(base + '/snipes', headers=bob[1], json={'targetId': int(charlie[0])}).status_code, 409)
+        challenged = self.client.post(base + '/snipes/' + hit['id'] + '/challenge', headers=alice[1], json={'reason': 'Not a valid shot'})
+        self.assertEqual(challenged.status_code, 200, challenged.text)
+        self.assertEqual(challenged.json()['status'], 'challenged')
+        approved = self.client.post(base + '/snipes/' + hit['id'] + '/approve', headers=charlie[1])
+        self.assertEqual(approved.status_code, 200, approved.text)
+        self.assertEqual(approved.json()['status'], 'reversed')
+        board = self.client.get(base + '/leaderboard', headers=alice[1]).json()
+        self.assertTrue(all(member['points'] == 0 for member in board))

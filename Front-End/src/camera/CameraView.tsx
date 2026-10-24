@@ -1,94 +1,74 @@
 import { useEffect, useImperativeHandle, useRef, useState, type Ref } from 'react'
+import { CameraRig } from '../../../trigger_camera/camera.js'
 
-export interface CameraHandle {
-  capture: (steadyAt?: number) => Promise<string | null>
+export interface Shot {
+  /** Sharp frame from just before the flick, as a JPEG data URL the backend can persist. */
+  photo: string
+  /** Video from arming to just after the shot, for the kill cam. */
+  clip: Blob | null
+  /** Seconds into the clip when the trigger fired. */
+  shotAt: number
 }
 
-/** Live device preview; capture returns image bytes that the backend can persist. */
+export interface CameraHandle {
+  /** Start recording video (and buffering frames) while the trigger is armed. */
+  startRecording: () => void
+  /** Stop recording without keeping anything. */
+  discardRecording: () => void
+  takeShot: (fired: { firedAt: number; steadyAt: number }) => Promise<Shot | null>
+}
+
+/** Live rear-camera preview built on trigger_camera's CameraRig. */
 export function CameraView({ ref, onReady }: {
   ref: Ref<CameraHandle>
   onReady?: (ready: boolean) => void
 }) {
   const videoRef = useRef<HTMLVideoElement>(null)
-  const frames = useRef<{ canvas: HTMLCanvasElement; at: number }[]>([])
+  const rigRef = useRef<CameraRig | null>(null)
+  const recording = useRef(false)
   const [error, setError] = useState<string | null>(null)
   const [ready, setReady] = useState(false)
 
   useEffect(() => {
-    let cancelled = false
-    let stream: MediaStream | undefined
     const video = videoRef.current
-
-    async function start() {
-      try {
-        if (!navigator.mediaDevices?.getUserMedia) {
-          throw new Error('Camera access requires HTTPS or localhost and a supported browser.')
-        }
-        stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: { ideal: 'environment' } },
-          audio: false,
-        })
-        if (cancelled) {
-          stream.getTracks().forEach((track) => track.stop())
-          return
-        }
-        if (video) {
-          video.srcObject = stream
-          await video.play()
-        }
-      } catch (err) {
-        stream?.getTracks().forEach((track) => track.stop())
-        if (!cancelled) {
-          setError(err instanceof Error ? err.message : 'Unable to open the camera.')
-          setReady(false)
-        }
-      }
-    }
-    void start()
+    if (!video) return
+    let cancelled = false
+    const rig = new CameraRig(video)
+    rigRef.current = rig
+    rig.start().catch((err: unknown) => {
+      if (cancelled) return
+      setError(err instanceof Error ? err.message : 'Unable to open the camera.')
+      setReady(false)
+    })
     return () => {
       cancelled = true
-      stream?.getTracks().forEach((track) => track.stop())
-      if (video) video.srcObject = null
+      rig.stop()
+      rigRef.current = null
+      recording.current = false
     }
   }, [])
 
   useEffect(() => { onReady?.(ready) }, [ready, onReady])
 
-  // Keep a short, bounded frame history for sharp photos before the flick.
-  useEffect(() => {
-    if (!ready) return
-    const timer = window.setInterval(() => {
-      const video = videoRef.current
-      if (!video?.videoWidth || !video.videoHeight) return
-      const canvas = document.createElement('canvas')
-      const scale = Math.min(1, 960 / Math.max(video.videoWidth, video.videoHeight))
-      canvas.width = Math.round(video.videoWidth * scale)
-      canvas.height = Math.round(video.videoHeight * scale)
-      const context = canvas.getContext('2d')
-      if (!context) return
-      context.drawImage(video, 0, 0, canvas.width, canvas.height)
-      frames.current.push({ canvas, at: performance.now() })
-      if (frames.current.length > 8) frames.current.shift()
-    }, 50)
-    return () => { window.clearInterval(timer); frames.current = [] }
-  }, [ready])
-
   useImperativeHandle(ref, () => ({
-    capture: async (steadyAt?: number) => {
-      if (ready && steadyAt !== undefined) {
-        const frame = frames.current.filter((f) => f.at <= steadyAt).at(-1)
-        if (frame && performance.now() - frame.at < 500) return frame.canvas.toDataURL('image/jpeg', 0.8)
-      }
-      const video = videoRef.current
-      if (!ready || !video?.videoWidth || !video.videoHeight) return null
-      const canvas = document.createElement('canvas')
-      const scale = Math.min(1, 1600 / Math.max(video.videoWidth, video.videoHeight))
-      canvas.width = Math.round(video.videoWidth * scale)
-      canvas.height = Math.round(video.videoHeight * scale)
-      const context = canvas.getContext('2d')
-      if (!context) return null
-      context.drawImage(video, 0, 0, canvas.width, canvas.height)
-      return canvas.toDataURL('image/jpeg', 0.8)
+    startRecording: () => {
+      if (!rigRef.current || recording.current) return
+      rigRef.current.startRecording()
+      recording.current = true
+    },
+    discardRecording: () => {
+      if (!rigRef.current || !recording.current) return
+      recording.current = false
+      void rigRef.current.stopRecording(0)
+    },
+    takeShot: async ({ firedAt, steadyAt }) => {
+      const rig = rigRef.current
+      if (!rig || !recording.current) return null
+      recording.current = false
+      // Grab the pre-flick frame first: stopping the recording releases the buffer.
+      const photo = rig.frameAt(steadyAt).toDataURL('image/jpeg', 0.85)
+      const clip = await rig.stopRecording(800)
+      return { photo, clip, shotAt: (firedAt - rig.recordingStartedAt) / 1000 }
     },
   }))
 

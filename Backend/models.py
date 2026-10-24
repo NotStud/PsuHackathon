@@ -61,6 +61,11 @@ class League(SQLModel, table=True):
     join_code: str = Field(unique=True, index=True)
     cooldown_minutes: int = 60
     points_per_snipe: int = 10
+    shooter_cooldown_minutes: int = 0
+    bounty_bonus_points: int = 0
+    king_bonus_points: int = 0
+    round_duration_days: float = 7.0
+    created_at: NaiveDatetime = Field(default_factory=utc_now)
 
 
 class LeagueMember(SQLModel, table=True):
@@ -70,6 +75,7 @@ class LeagueMember(SQLModel, table=True):
     player_id: int = Field(foreign_key="players.id", primary_key=True)
     score: int = 0
     out_until: NaiveDatetime | None = None
+    cooldown_until: NaiveDatetime | None = None
 
 
 class LeagueSnipe(SQLModel, table=True):
@@ -79,6 +85,7 @@ class LeagueSnipe(SQLModel, table=True):
     league_id: int = Field(foreign_key="leagues.id", index=True)
     shooter_id: int = Field(foreign_key="players.id")
     target_id: int = Field(foreign_key="players.id")
+    request_id: str | None = Field(default=None, index=True)
     photo_url: str | None = None
     created_at: NaiveDatetime = Field(default_factory=utc_now)
 
@@ -100,3 +107,15 @@ class AccountSession(SQLModel, table=True):
     token_hash: str = Field(primary_key=True)
     account_id: int = Field(foreign_key="accounts.id", index=True)
     expires_at: NaiveDatetime
+
+
+class SnipeChallenge(SQLModel, table=True):
+    __tablename__ = "snipe_challenges"
+
+    snipe_id: int = Field(foreign_key="league_snipes.id", primary_key=True)
+    challenger_id: int = Field(foreign_key="players.id")
+    reason: str
+    status: str = "pending"
+    created_at: NaiveDatetime = Field(default_factory=utc_now)
+    approved_by: int | None = Field(default=None, foreign_key="players.id")
+    approved_at: NaiveDatetime | None = None

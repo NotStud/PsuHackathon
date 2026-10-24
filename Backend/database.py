@@ -38,6 +38,17 @@ def create_db_and_tables():
 
     with engine.begin() as connection:
         SQLModel.metadata.create_all(connection)
+        # Existing Supabase tables need additive columns for the merged league rules.
+        for table, column, definition in (
+            ("leagues", "shooter_cooldown_minutes", "INTEGER NOT NULL DEFAULT 0"),
+            ("leagues", "bounty_bonus_points", "INTEGER NOT NULL DEFAULT 0"),
+            ("leagues", "king_bonus_points", "INTEGER NOT NULL DEFAULT 0"),
+            ("leagues", "round_duration_days", "DOUBLE PRECISION NOT NULL DEFAULT 7"),
+            ("leagues", "created_at", "TIMESTAMP NOT NULL DEFAULT (CURRENT_TIMESTAMP AT TIME ZONE 'UTC')"),
+            ("league_members", "cooldown_until", "TIMESTAMP"),
+            ("league_snipes", "request_id", "VARCHAR"),
+        ):
+            connection.execute(text(f'ALTER TABLE public."{table}" ADD COLUMN IF NOT EXISTS "{column}" {definition}'))
         for table in SQLModel.metadata.tables:
             connection.execute(text(f'ALTER TABLE public."{table}" ENABLE ROW LEVEL SECURITY'))
 

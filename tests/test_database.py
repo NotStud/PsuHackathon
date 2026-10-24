@@ -37,7 +37,7 @@ class DatabaseTests(unittest.TestCase):
             database.create_db_and_tables()
         create.assert_called_once_with(connection)
         statements = [str(call.args[0]) for call in connection.execute.call_args_list]
-        self.assertEqual(len(statements), len(SQLModel.metadata.tables))
+        self.assertEqual(len(statements), len(SQLModel.metadata.tables) + 7)
         for table in ("players", "games", "game_players", "snipes"):
             self.assertIn(f'ALTER TABLE public."{table}" ENABLE ROW LEVEL SECURITY', statements)
 

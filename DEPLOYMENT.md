@@ -95,3 +95,10 @@ paths, so the frontend automatically calls the backend through the new domain.
    finish attaching accounts to their old browser sessions.
 
 Official instructions: https://render.com/docs/custom-domains
+
+
+The merged league rules use the same plural-named Supabase tables as accounts.
+Startup adds the shooter cooldown, bonus settings, round timestamp, and request
+ID columns to existing tables using additive `ADD COLUMN IF NOT EXISTS`
+statements. Existing leagues default to no extra shooter cooldown or bonuses;
+new league requests can configure them. Challenges use `snipe_challenges`.

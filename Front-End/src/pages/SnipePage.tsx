@@ -3,7 +3,10 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { getLeaderboard, getMyLeagues, submitSnipe } from '../api'
 import { getCurrentUser } from '../api'
 import { MotionTrigger } from '../camera/MotionTrigger'
-import { CameraView, type CameraHandle } from '../camera/CameraView'
+import { CameraView, type CameraHandle, type Shot } from '../camera/CameraView'
+import { ShotReview } from '../camera/KillCam'
+import { bang } from '../camera/feedback'
+import type { FireInfo } from '../../../trigger_camera/trigger.js'
 import { Avatar } from '../components/Avatar'
 import { CooldownBadge } from '../components/CooldownBadge'
 import { CloseIcon, CrosshairIcon } from '../components/Icons'
@@ -37,8 +40,9 @@ function pickLeague(requested: string | null, leagues: League[] | null): League 
 
 /**
  * Full-screen, camera-first snipe flow built for speed:
- * the camera is live the moment the screen opens, the shutter sits in the thumb
- * zone, and choosing *who* you hit happens after the shot, once the moment is captured.
+ * the camera is live the moment the screen opens, one Start tap arms the flick
+ * trigger (and starts recording), a flick of the phone takes the shot, and choosing
+ * *who* you hit happens after, over the kill cam and hit photo.
  */
 export function SnipePage() {
   const navigate = useNavigate()
@@ -55,7 +59,8 @@ export function SnipePage() {
     [league?.id],
   )
 
-  const [shot, setShot] = useState<string | null>(null)
+  const [started, setStarted] = useState(false)
+  const [shot, setShot] = useState<Shot | null>(null)
   const [flash, setFlash] = useState(false)
   const [targetId, setTargetId] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
@@ -72,42 +77,33 @@ export function SnipePage() {
 
   const canShoot = cameraReady && Boolean(league) && !board.loading && !board.error && Boolean(me.data) && !shot
 
-  async function shoot(steadyAt?: number) {
+  // Record while the trigger is armed, so the kill cam has the run-up to the shot.
+  useEffect(() => {
+    if (started && canShoot) cameraRef.current?.startRecording()
+  }, [started, canShoot])
+
+  async function shoot(fired: FireInfo) {
     if (!canShoot || capturing.current) return
     capturing.current = true
     setError(null)
+    bang()
+    setFlash(true)
+    setTimeout(() => setFlash(false), 180)
     try {
-      const url = await cameraRef.current?.capture(steadyAt)
-      if (!url) throw new Error('Camera is not ready. Try again.')
-      navigator.vibrate?.(40)
-      setShot(url)
-      setFlash(true)
-      setTimeout(() => setFlash(false), 180)
+      const taken = await cameraRef.current?.takeShot(fired)
+      if (!taken) throw new Error('Camera is not ready. Try again.')
+      setShot(taken)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to capture photo.')
     } finally { capturing.current = false }
   }
-
-  // Space / Enter fires the shutter on desktop.
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      const element = e.target as HTMLElement | null
-      if (e.repeat || element?.closest('button, input, select, textarea, a, [contenteditable]')) return
-      if (!shot && (e.key === ' ' || e.key === 'Enter')) {
-        e.preventDefault()
-        shoot()
-      }
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  })
 
   async function confirm() {
     if (!league || !target || !shot || submitting) return
     setSubmitting(true)
     setError(null)
     try {
-      await submitSnipe(league.id, target.user.id, shot)
+      await submitSnipe(league.id, target.user.id, shot.photo)
       saveLastLeague(league.id)
       navigator.vibrate?.([30, 50, 30])
       setDone(target)
@@ -126,6 +122,12 @@ export function SnipePage() {
     board.reload()
   }
 
+  // Throw the shot away and go back to the plain preview; Start re-arms.
+  function backToStart() {
+    reset()
+    setStarted(false)
+  }
+
   function changeLeague(id: string) {
     saveLastLeague(id)
     setParams({ league: id }, { replace: true })
@@ -136,7 +138,7 @@ export function SnipePage() {
     <div className="snipe-screen">
       <CameraView ref={cameraRef} onReady={setCameraReady} />
       {(leagues.error || board.error || me.error) && <p className="snipe-error" role="alert">{leagues.error || board.error || me.error}</p>}
-      {shot && <img className="snipe-shot" src={shot} alt="Your shot" />}
+      {shot && <ShotReview shot={shot} />}
       {flash && <div className="snipe-flash" />}
 
       <div className="snipe-top">
@@ -164,7 +166,6 @@ export function SnipePage() {
         )}
       </div>
 
-      <div hidden={Boolean(shot)}><MotionTrigger armed={canShoot} onFire={(steadyAt) => { void shoot(steadyAt) }} /></div>
       {!shot && (
         <>
           <div className="snipe-reticle" aria-hidden>
@@ -177,7 +178,8 @@ export function SnipePage() {
                 Join a league to start sniping
               </Link>
             ) : (
-              <button className="shutter" disabled={!canShoot} onClick={() => { void shoot() }} aria-label="Take the shot" />
+              <MotionTrigger started={started} onStart={() => setStarted(true)} armed={canShoot}
+                onFire={(fired) => { void shoot(fired) }} />
             )}
           </div>
         </>
@@ -187,8 +189,8 @@ export function SnipePage() {
         <div className="sheet" role="dialog" aria-label="Who did you get?">
           <div className="sheet-header">
             <h2>Who did you get?</h2>
-            <button className="button" onClick={reset}>
-              Retake
+            <button className="button" onClick={backToStart}>
+              Back to start
             </button>
           </div>
           {board.loading && !board.data && <p className="muted">Loading players…</p>}
@@ -215,7 +217,7 @@ export function SnipePage() {
             disabled={!target || submitting}
             onClick={confirm}
           >
-            {submitting ? 'Sending…' : target ? `Snipe ${target.user.displayName}` : 'Tap who you got'}
+            {submitting ? 'Sending…' : target ? `Send: snipe ${target.user.displayName}` : 'Tap who you got'}
           </button>
         </div>
       )}

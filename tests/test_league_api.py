@@ -28,7 +28,7 @@ class LeagueApiTests(unittest.TestCase):
     def test_ui_lifecycle_and_persistence(self):
         login, alice = self.login('Alice')
         _, bob = self.login('Bob')
-        league = api.create_league(api.LeagueInput(name='Friends', cooldownMinutes=30), self.session, alice)
+        league = api.create_league(api.LeagueInput(name='Friends', cooldownMinutes=30, pointsPerSnipe=10, bountyBonusPoints=0, kingBonusPoints=0, shooterCooldownMinutes=0), self.session, alice)
         lid = int(league['id'])
         joined = api.join_league(api.JoinInput(joinCode=league['joinCode'].lower()), self.session, bob)
         self.assertEqual(len(joined['memberIds']), 2)
@@ -52,7 +52,7 @@ class LeagueApiTests(unittest.TestCase):
     def test_fifteen_minute_cooldown_and_expiry(self):
         _, alice = self.login('Alice')
         _, bob = self.login('Bob')
-        league = api.create_league(api.LeagueInput(name='15 minute league', cooldownMinutes=15), self.session, alice)
+        league = api.create_league(api.LeagueInput(name='15 minute league', cooldownMinutes=15, pointsPerSnipe=10, bountyBonusPoints=0, kingBonusPoints=0, shooterCooldownMinutes=0), self.session, alice)
         self.assertEqual(league['cooldownMinutes'], 15)
         lid = int(league['id'])
         api.join_league(api.JoinInput(joinCode=league['joinCode']), self.session, bob)
@@ -76,7 +76,7 @@ class LeagueApiTests(unittest.TestCase):
     def test_membership_auth_and_self_hit(self):
         _, alice = self.login('Alice')
         _, outsider = self.login('Outsider')
-        league = api.create_league(api.LeagueInput(name='Friends', cooldownMinutes=30), self.session, alice)
+        league = api.create_league(api.LeagueInput(name='Friends', cooldownMinutes=30, pointsPerSnipe=10, bountyBonusPoints=0, kingBonusPoints=0, shooterCooldownMinutes=0), self.session, alice)
         lid = int(league['id'])
         with self.assertRaises(HTTPException) as error:
             api.get_league(lid, self.session, outsider)
