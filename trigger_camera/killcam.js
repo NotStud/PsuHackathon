@@ -1,11 +1,9 @@
-// Kill cam: auto-plays the last moments before a shot on a loop, in slow motion
-// around the trigger pull. Starts on its own (muted + playsinline is what lets
+// Kill cam: auto-plays the last moments before a shot on a loop. The run-up plays
+// at normal speed, then it drops into slow motion from the shot to the end. Starts on its own (muted + playsinline is what lets
 // phones autoplay without a tap) and never shows player controls.
 
 const LEAD_S = 2;          // how much of the run-up to replay
-const SLOW_FROM_S = 0.5;   // start slow-mo this long before the shot...
-const SLOW_UNTIL_S = 0.3;  // ...and end it this long after
-const SLOW_RATE = 0.3;
+const SLOW_RATE = 0.2;     // speed from the shot to the end of the clip
 const LOOP_PAUSE_MS = 700;
 
 // shotAt is the trigger time in seconds from the start of the clip.
@@ -29,7 +27,7 @@ export function playKillCam(video, clip, shotAt, { onShot = () => {} } = {}) {
 
   const tick = () => {
     const t = video.currentTime;
-    const rate = t >= shotAt - SLOW_FROM_S && t < shotAt + SLOW_UNTIL_S ? SLOW_RATE : 1;
+    const rate = t >= shotAt ? SLOW_RATE : 1;
     if (video.playbackRate !== rate) video.playbackRate = rate;
     if (!shown && t >= shotAt) {
       shown = true;

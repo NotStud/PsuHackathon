@@ -15,8 +15,7 @@
     .crosshair::before, .crosshair::after { content: ''; position: absolute; background: var(--accent); }
     .crosshair::before { left: 50%; top: 0; bottom: 0; width: 2px; margin-left: -1px; }
     .crosshair::after { top: 50%; left: 0; right: 0; height: 2px; margin-top: -1px; }
-    .crosshair.armed { outline: 2px solid var(--accent); border-radius: 50%; }
-    #flash { position: fixed; inset: 0; z-index: 10; background: #fff; opacity: 0; pointer-events: none; transition: opacity .25s; }
+    .crosshair.armed { outline: 2px solid var(--accent); border-radius: 50%; }    #flash { position: fixed; inset: 0; z-index: 10; background: #fff; opacity: 0; pointer-events: none; transition: opacity .25s; }
     #flash.on { opacity: .8; transition: none; }
     .hud { position: fixed; left: 0; right: 0; padding: 16px; padding-top: max(16px, env(safe-area-inset-top));
       display: flex; justify-content: space-between; gap: 8px; text-shadow: 0 1px 3px #000; }
@@ -29,6 +28,7 @@
       background: var(--accent); color: #fff; }
     .row { display: flex; gap: 8px; }
     .row > * { flex: 1; }
+    button.secondary { background: #ffffff26; }
     label { font-size: 13px; display: flex; align-items: center; gap: 8px; }
     label input { flex: 1; }
     #result { position: fixed; inset: 0; background: #000; display: none; flex-direction: column; gap: 2px; }
@@ -58,13 +58,13 @@
   <div id="flash"></div>
 
   <div class="hud top">
-    <span id="status">Tap Start to open the camera</span>
+    <span id="status">Opening camera…</span>
     <span id="rate"></span>
   </div>
 
   <div class="hud bottom">
     <div id="meter"><div></div></div>
-    <label>Sensitivity <input id="threshold" type="range" min="20" max="360" step="5"><span id="thresholdVal"></span>°/s</label>
+    <label>Sensitivity <input id="threshold" type="range" min="20" max="360" step="1"><span id="thresholdVal"></span>°/s</label>
     <div class="row">
       <button id="start">Start</button>
     </div>
@@ -82,7 +82,10 @@
     </div>
     <div class="hud bottom">
       <div id="verdict">Sending…</div>
-      <button id="again">Next shot</button>
+      <div class="row">
+        <button id="toStart" class="secondary">Back to start</button>
+        <button id="again">Shoot again</button>
+      </div>
     </div>
   </div>
 
@@ -101,8 +104,8 @@
     $('threshold').value = $('thresholdVal').textContent = DEFAULT_THRESHOLD;
 
     const trigger = new FlickTrigger({
-      onSample: ({ pitch, steady }) => {
-        const pct = Math.min(100, Math.abs(pitch) / trigger.threshold * 100);
+      onSample: ({ pitch, steady, strength }) => {
+        const pct = Math.min(100, strength / trigger.threshold * 100);
         $('meter').firstElementChild.style.width = pct + '%';
         $('meter').firstElementChild.classList.toggle('hot', pct >= 100);
         $('rate').textContent = `${Math.round(pitch)}°/s${steady ? ' · steady' : ''}`;
@@ -115,12 +118,27 @@
       $('thresholdVal').textContent = e.target.value;
     };
 
+    // The camera preview opens as soon as the page loads; Start only arms the trigger.
+    let cameraStarting = startCamera();
+    cameraStarting.catch(() => {});
+
+    function startCamera() {
+      return cam.start().then(
+        () => setStatus('Tap Start when you\'re ready to shoot'),
+        err => {
+          cameraStarting = null;  // let Start try again
+          setStatus(`Camera unavailable (${err.message || err}). Tap Start to retry`);
+          throw err;
+        });
+    }
+
     $('start').onclick = async () => {
       try {
-        // Both permissions must be requested inside this tap for iOS.
-        await FlickTrigger.requestPermission();
-        await cam.start();
-        audio = new (window.AudioContext || window.webkitAudioContext)();
+        // iOS only allows these from inside the tap, before any await.
+        const motionAllowed = FlickTrigger.requestPermission();
+        audio ||= new (window.AudioContext || window.webkitAudioContext)();
+        await motionAllowed;
+        await (cameraStarting || (cameraStarting = startCamera()));
         $('start').hidden = true;
         arm();
       } catch (err) {
@@ -139,12 +157,23 @@
       }, 1000);
     }
 
-    $('again').onclick = () => {
+    function closeResult() {
       $('result').classList.remove('show');
       stopKillCam();
       URL.revokeObjectURL($('shotImg').src);
       $('verdict').textContent = 'Sending…';
+    }
+
+    $('again').onclick = () => {
+      closeResult();
       arm();
+    };
+
+    // Back to the live preview: camera stays on, but nothing records until Start.
+    $('toStart').onclick = () => {
+      closeResult();
+      $('start').hidden = false;
+      setStatus('Tap Start when you\'re ready to shoot');
     };
 
     async function onFire({ firedAt, steadyAt, peakRate }) {
@@ -206,9 +235,24 @@
       requestAnimationFrame(() => requestAnimationFrame(() => $('flash').classList.remove('on')));
     }
 
+    // Android supports the vibrate API. iOS Safari doesn't, but toggling a native
+    // switch control gives a haptic tap (iOS 18+), so we toggle a hidden one.
+    function buzz() {
+      if (navigator.vibrate) {
+        navigator.vibrate([70, 40, 40]);  // kick + smaller echo, like recoil
+        return;
+      }
+      const label = document.createElement('label');
+      label.style.display = 'none';
+      label.innerHTML = '<input type="checkbox" switch>';
+      document.body.appendChild(label);
+      label.click();
+      label.remove();
+    }
+
     function bang() {
       flash();
-      navigator.vibrate?.(80);
+      buzz();
       if (!audio) return;
       // Short burst of decaying noise.
       const len = audio.sampleRate * 0.25;
