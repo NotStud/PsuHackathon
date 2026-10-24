@@ -1,0 +1,668 @@
+/* ---------- Design tokens ---------- */
+:root {
+  --bg: #f6f6f8;
+  --surface: #ffffff;
+  --surface-2: #eeeef2;
+  --text: #16161d;
+  --text-muted: #6b6b78;
+  --border: #e2e2e8;
+  --accent: #ef4444;
+  --accent-text: #ffffff;
+  --accent-soft: #fee2e2;
+  --cooldown: #2563eb;
+  --cooldown-soft: #dbeafe;
+  --error: #dc2626;
+
+  --radius: 14px;
+  --radius-sm: 10px;
+  --tabbar-height: 68px;
+  --max-width: 560px;
+
+  color-scheme: light dark;
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  color: var(--text);
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0e0e13;
+    --surface: #18181f;
+    --surface-2: #23232c;
+    --text: #f1f1f4;
+    --text-muted: #9a9aa8;
+    --border: #2c2c36;
+    --accent-soft: #3b1414;
+    --cooldown: #60a5fa;
+    --cooldown-soft: #172554;
+    --error: #f87171;
+  }
+}
+
+/* ---------- Base ---------- */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100dvh;
+  background: var(--bg);
+}
+
+h1,
+h2,
+p {
+  margin: 0;
+}
+
+button,
+input,
+select {
+  font: inherit;
+  color: inherit;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+ul,
+ol {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.muted {
+  color: var(--text-muted);
+}
+.small {
+  font-size: 0.85rem;
+}
+.center {
+  text-align: center;
+}
+.error {
+  color: var(--error);
+}
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+}
+
+/* ---------- Shell & navigation ---------- */
+.shell-content {
+  max-width: var(--max-width);
+  margin: 0 auto;
+  padding: 16px 16px calc(var(--tabbar-height) + 32px);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.tabbar {
+  position: fixed;
+  inset: auto 0 0 0;
+  height: calc(var(--tabbar-height) + env(safe-area-inset-bottom));
+  padding-bottom: env(safe-area-inset-bottom);
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+}
+
+.tab {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+.tab.active {
+  color: var(--text);
+}
+
+.tab-snipe {
+  padding: 0 24px;
+}
+.tab-snipe-button {
+  display: grid;
+  place-items: center;
+  width: 64px;
+  height: 64px;
+  margin-top: -28px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--accent-text);
+  box-shadow: 0 6px 20px rgb(239 68 68 / 0.4);
+  border: 4px solid var(--bg);
+}
+
+.page-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+}
+.page-header h1 {
+  font-size: 1.6rem;
+  font-weight: 750;
+  letter-spacing: -0.02em;
+}
+.page-header-action {
+  margin-left: auto;
+}
+
+.icon-button {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  margin-left: -8px;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  cursor: pointer;
+}
+.icon-button:hover {
+  background: var(--surface-2);
+}
+
+/* ---------- Buttons & forms ---------- */
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 18px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  font-weight: 600;
+  cursor: pointer;
+}
+.button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.button-primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-text);
+}
+.button-block {
+  width: 100%;
+}
+.button-large {
+  min-height: 54px;
+  font-size: 1.05rem;
+}
+.button-row {
+  display: flex;
+  gap: 8px;
+}
+.button-row > * {
+  flex: 1;
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+.field input,
+.field select {
+  min-height: 46px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  font-weight: 400;
+  font-size: 1rem;
+}
+.field input:focus,
+.field select:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* ---------- Cards, lists, rows ---------- */
+.card {
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+.card-link {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.card-link:hover {
+  border-color: var(--text-muted);
+}
+.card-title {
+  font-size: 1.1rem;
+  margin-bottom: 2px;
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+.row-me {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.row-main {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+.row-name {
+  font-weight: 600;
+}
+.rank {
+  width: 20px;
+  text-align: center;
+  font-weight: 700;
+  color: var(--text-muted);
+}
+.points {
+  min-width: 36px;
+  text-align: right;
+  font-weight: 800;
+  font-size: 1.1rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.section-title {
+  font-size: 1rem;
+  font-weight: 700;
+  margin-top: 4px;
+}
+
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 32px 16px;
+  text-align: center;
+}
+
+.code {
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: var(--surface-2);
+  font-family: ui-monospace, 'Cascadia Code', monospace;
+  font-size: 0.85rem;
+  letter-spacing: 0.05em;
+}
+
+.league-meta {
+  margin-top: -8px;
+}
+
+.avatar {
+  display: inline-grid;
+  place-items: center;
+  flex-shrink: 0;
+  border-radius: 50%;
+  color: #fff;
+  font-weight: 700;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.badge-cooldown {
+  background: var(--cooldown-soft);
+  color: var(--cooldown);
+}
+
+/* ---------- Segmented control ---------- */
+.segmented {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  padding: 4px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+.segmented button {
+  min-height: 38px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  font-weight: 600;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.segmented button[aria-selected='true'] {
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.12);
+}
+
+/* ---------- Feed ---------- */
+.feed-item {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 10px;
+}
+.feed-photo {
+  grid-column: 1 / -1;
+  width: 100%;
+  border-radius: var(--radius-sm);
+}
+
+/* ---------- Snipe screen (full-screen camera) ---------- */
+/* Always dark: it's a viewfinder, whatever the device theme. */
+.snipe-screen {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  background: #000;
+  color: #fff;
+}
+
+.camera,
+.camera video,
+.snipe-shot {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+.camera video,
+.snipe-shot {
+  object-fit: cover;
+}
+.camera-hint {
+  position: absolute;
+  inset: auto 0 40%;
+  text-align: center;
+  color: rgb(255 255 255 / 0.7);
+}
+
+.snipe-flash {
+  position: absolute;
+  inset: 0;
+  background: #fff;
+  animation: flash 0.18s ease-out forwards;
+  pointer-events: none;
+}
+@keyframes flash {
+  to {
+    opacity: 0;
+  }
+}
+
+.snipe-top {
+  position: absolute;
+  inset: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: calc(env(safe-area-inset-top) + 12px) 16px 12px;
+  background: linear-gradient(rgb(0 0 0 / 0.55), transparent);
+}
+.snipe-round-button {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  border: none;
+  border-radius: 50%;
+  background: rgb(0 0 0 / 0.45);
+  color: #fff;
+  cursor: pointer;
+}
+.snipe-league {
+  min-width: 0;
+  max-width: 70%;
+  min-height: 44px;
+  padding: 0 14px;
+  border: none;
+  border-radius: 999px;
+  background: rgb(0 0 0 / 0.45);
+  color: #fff;
+  font-weight: 600;
+}
+.snipe-league option {
+  color: #000;
+}
+
+.snipe-reticle {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: rgb(255 255 255 / 0.75);
+  pointer-events: none;
+}
+
+.snipe-bottom {
+  position: absolute;
+  inset: auto 0 0;
+  display: flex;
+  justify-content: center;
+  padding: 24px 16px calc(env(safe-area-inset-bottom) + 32px);
+  background: linear-gradient(transparent, rgb(0 0 0 / 0.55));
+}
+
+/* Big, thumb-reachable shutter. */
+.shutter {
+  width: 84px;
+  height: 84px;
+  padding: 0;
+  border: 5px solid #fff;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 4px rgb(0 0 0 / 0.25), 0 8px 24px rgb(239 68 68 / 0.5);
+  cursor: pointer;
+  transition: transform 0.08s;
+}
+.shutter:active {
+  transform: scale(0.9);
+}
+.shutter:focus-visible {
+  outline: 3px solid #fff;
+  outline-offset: 4px;
+}
+
+/* Target picker slides up over the frozen shot. */
+.sheet {
+  position: absolute;
+  inset: auto 0 0;
+  max-height: 70%;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 20px 16px calc(env(safe-area-inset-bottom) + 20px);
+  border-radius: 20px 20px 0 0;
+  background: var(--surface);
+  color: var(--text);
+  animation: sheet-up 0.22s ease-out;
+}
+.sheet-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.sheet-header h2 {
+  font-size: 1.25rem;
+}
+@keyframes sheet-up {
+  from {
+    transform: translateY(100%);
+  }
+}
+
+.target-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(88px, 1fr));
+  gap: 8px;
+}
+.target {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  min-height: 104px;
+  padding: 12px 6px;
+  border: 2px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  font-weight: 600;
+  cursor: pointer;
+}
+.target.selected {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.target:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.snipe-success {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 24px 16px;
+  text-align: center;
+  background: rgb(0 0 0 / 0.7);
+}
+.snipe-success h1 {
+  font-size: 2.4rem;
+}
+.snipe-success .button-row {
+  width: 100%;
+  max-width: 360px;
+  margin-top: 16px;
+}
+.success-icon {
+  display: grid;
+  place-items: center;
+  width: 112px;
+  height: 112px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--accent-text);
+  animation: pop 0.4s ease-out;
+}
+@keyframes pop {
+  from {
+    transform: scale(0.4);
+    opacity: 0;
+  }
+}
+
+/* ---------- Profile ---------- */
+.profile-hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+.stat-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+.stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 14px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+.stat-value {
+  font-size: 1.5rem;
+  font-weight: 800;
+}
+
+/* ---------- Login ---------- */
+.login {
+  max-width: 400px;
+  min-height: 100dvh;
+  margin: 0 auto;
+  padding: 24px 16px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 40px;
+}
+.login-brand {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  text-align: center;
+}
+.login-brand h1 {
+  font-size: 2.4rem;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+}
+.login-logo {
+  display: grid;
+  place-items: center;
+  width: 88px;
+  height: 88px;
+  border-radius: 24px;
+  background: var(--accent);
+  color: var(--accent-text);
+}
