@@ -34,11 +34,8 @@ engine = build_engine(os.getenv("DATABASE_URL", ""))
 
 
 def create_db_and_tables():
-    # Import models so metadata is populated even when called outside main.py.
-    import models  # noqa: F401
+    import models 
 
-    # Create tables and enable RLS in the same transaction, before exposing them.
-    # FastAPI connects as the database owner; browser API roles have no policies.
     with engine.begin() as connection:
         SQLModel.metadata.create_all(connection)
         for table in ("players", "games", "game_players", "snipes"):
