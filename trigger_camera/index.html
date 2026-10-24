@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+  <title>Snipe – Trigger</title>
+  <style>
+    :root { --accent: #ff3b30; --fg: #fff; --bg: #000; }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg);
+      font: 16px/1.3 system-ui, -apple-system, sans-serif; overflow: hidden; touch-action: none; }
+    video { position: fixed; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+    .crosshair { position: fixed; left: 50%; top: 50%; width: 64px; height: 64px;
+      transform: translate(-50%, -50%); pointer-events: none; }
+    .crosshair::before, .crosshair::after { content: ''; position: absolute; background: var(--accent); }
+    .crosshair::before { left: 50%; top: 0; bottom: 0; width: 2px; margin-left: -1px; }
+    .crosshair::after { top: 50%; left: 0; right: 0; height: 2px; margin-top: -1px; }
+    .crosshair.armed { outline: 2px solid var(--accent); border-radius: 50%; }
+    #flash { position: fixed; inset: 0; z-index: 10; background: #fff; opacity: 0; pointer-events: none; transition: opacity .25s; }
+    #flash.on { opacity: .8; transition: none; }
+    .hud { position: fixed; left: 0; right: 0; padding: 16px; padding-top: max(16px, env(safe-area-inset-top));
+      display: flex; justify-content: space-between; gap: 8px; text-shadow: 0 1px 3px #000; }
+    .top { top: 0; }
+    .bottom { bottom: 0; padding-bottom: max(16px, env(safe-area-inset-bottom)); flex-direction: column; align-items: stretch; }
+    #meter { height: 6px; background: #ffffff33; border-radius: 3px; overflow: hidden; }
+    #meter > div { height: 100%; width: 0; background: var(--fg); }
+    #meter > div.hot { background: var(--accent); }
+    button { font: inherit; font-weight: 700; padding: 16px; border: 0; border-radius: 12px;
+      background: var(--accent); color: #fff; }
+    .row { display: flex; gap: 8px; }
+    .row > * { flex: 1; }
+    label { font-size: 13px; display: flex; align-items: center; gap: 8px; }
+    label input { flex: 1; }
+    #result { position: fixed; inset: 0; background: #000; display: none; flex-direction: column; gap: 2px; }
+    #result.show { display: flex; }
+    /* Kill cam on top, hit photo below. Each is center-cropped, so its crosshair is where you aimed. */
+    .panel { position: relative; flex: 1; overflow: hidden; }
+    .panel video, .panel img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+    .panel .crosshair { position: absolute; }
+    .panel-label { position: absolute; top: 12px; left: 16px; font-weight: 800; letter-spacing: .12em;
+      text-shadow: 0 1px 3px #000; }
+    #killcamPanel .panel-label { top: max(12px, env(safe-area-inset-top)); }
+    #result .hud.bottom { position: static; }
+    #result .crosshair.pop { animation: pop .5s ease-out; }
+    @keyframes pop {
+      from { transform: translate(-50%, -50%) scale(2.2); filter: drop-shadow(0 0 10px #fff); }
+      to { transform: translate(-50%, -50%) scale(1); }
+    }
+    .killcam-label::before { content: ''; display: inline-block; width: 10px; height: 10px; margin-right: 8px;
+      border-radius: 50%; background: var(--accent); animation: blink 1s steps(2) infinite; }
+    @keyframes blink { 50% { opacity: 0; } }
+    #verdict { font-size: 28px; font-weight: 800; text-align: center; }
+  </style>
+</head>
+<body>
+  <video id="cam" autoplay muted playsinline></video>
+  <div class="crosshair" id="crosshair"></div>
+  <div id="flash"></div>
+
+  <div class="hud top">
+    <span id="status">Tap Start to open the camera</span>
+    <span id="rate"></span>
+  </div>
+
+  <div class="hud bottom">
+    <div id="meter"><div></div></div>
+    <label>Sensitivity <input id="threshold" type="range" min="20" max="360" step="5"><span id="thresholdVal"></span>°/s</label>
+    <div class="row">
+      <button id="start">Start</button>
+    </div>
+  </div>
+
+  <div id="result">
+    <div class="panel" id="killcamPanel">
+      <video id="clip" playsinline muted></video>
+      <div class="crosshair" id="killcamCrosshair"></div>
+      <span class="panel-label killcam-label">KILL CAM</span>    </div>
+    <div class="panel">
+      <img id="shotImg" alt="Hit photo">
+      <div class="crosshair"></div>
+      <span class="panel-label">HIT PHOTO</span>
+    </div>
+    <div class="hud bottom">
+      <div id="verdict">Sending…</div>
+      <button id="again">Next shot</button>
+    </div>
+  </div>
+
+  <script type="module">
+    import { FlickTrigger, DEFAULT_THRESHOLD } from './trigger.js';
+    import { CameraRig, canvasToBlob } from './camera.js';
+    import { playKillCam } from './killcam.js';
+
+    // Where shots are POSTed (multipart: frame, clip, meta). Override with ?endpoint=...
+    const ENDPOINT = new URLSearchParams(location.search).get('endpoint') || '/shot';
+
+    const $ = id => document.getElementById(id);
+    const cam = new CameraRig($('cam'));
+    let audio, stopKillCam = () => {};
+
+    $('threshold').value = $('thresholdVal').textContent = DEFAULT_THRESHOLD;
+
+    const trigger = new FlickTrigger({
+      onSample: ({ pitch, steady }) => {
+        const pct = Math.min(100, Math.abs(pitch) / trigger.threshold * 100);
+        $('meter').firstElementChild.style.width = pct + '%';
+        $('meter').firstElementChild.classList.toggle('hot', pct >= 100);
+        $('rate').textContent = `${Math.round(pitch)}°/s${steady ? ' · steady' : ''}`;
+      },
+      onFire: shot => onFire(shot),
+    });
+
+    $('threshold').oninput = e => {
+      trigger.threshold = +e.target.value;
+      $('thresholdVal').textContent = e.target.value;
+    };
+
+    $('start').onclick = async () => {
+      try {
+        // Both permissions must be requested inside this tap for iOS.
+        await FlickTrigger.requestPermission();
+        await cam.start();
+        audio = new (window.AudioContext || window.webkitAudioContext)();
+        $('start').hidden = true;
+        arm();
+      } catch (err) {
+        setStatus(err.message || String(err));
+      }
+    };
+
+    // Armed as soon as the camera is open: a flick takes the shot, no extra tap.
+    function arm() {
+      cam.startRecording();
+      trigger.arm();
+      $('crosshair').classList.add('armed');
+      setStatus('Aim, then flick the phone up to shoot');
+      setTimeout(() => {
+        if (!trigger.hasSensor) setStatus('No motion detected. Reload and allow Motion & Orientation');
+      }, 1000);
+    }
+
+    $('again').onclick = () => {
+      $('result').classList.remove('show');
+      stopKillCam();
+      URL.revokeObjectURL($('shotImg').src);
+      $('verdict').textContent = 'Sending…';
+      arm();
+    };
+
+    async function onFire({ firedAt, steadyAt, peakRate }) {
+      bang();
+      $('crosshair').classList.remove('armed');
+      setStatus('Bang!');
+
+      // Grab the sharp pre-flick frame before the buffer is released.
+      const frame = await canvasToBlob(cam.frameAt(steadyAt));
+      const clip = await cam.stopRecording(800);
+      const shotAt = (firedAt - cam.recordingStartedAt) / 1000;  // seconds into the clip
+
+      const meta = {
+        request_id: crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random(),
+        fired_at: Date.now() - Math.round(performance.now() - firedAt),
+        frame_lead_ms: Math.round(firedAt - steadyAt),  // how far before the trigger the frame is
+        aim: { x: 0.5, y: 0.5 },                        // crosshair, as a fraction of the frame
+        peak_rate: Math.round(peakRate),
+      };
+      showResult(frame, clip, shotAt);
+      upload(frame, clip, meta);
+    }
+
+    async function upload(frame, clip, meta) {
+      const body = new FormData();
+      body.append('meta', JSON.stringify(meta));
+      body.append('frame', frame, 'frame.jpg');
+      if (clip) body.append('clip', clip, 'clip.' + (clip.type.includes('mp4') ? 'mp4' : 'webm'));
+      try {
+        const res = await fetch(ENDPOINT, { method: 'POST', body });
+        const data = await res.json().catch(() => ({}));
+        $('verdict').textContent = !res.ok ? `Upload failed (${res.status})`
+          : data.hit === true ? 'HIT' + (data.target ? `: ${data.target}` : '')
+          : data.hit === false ? 'Miss'
+          : 'Shot saved';
+      } catch (err) {
+        $('verdict').textContent = 'Upload failed: ' + err.message;
+      }
+    }
+
+    function showResult(frame, clip, shotAt) {
+      $('shotImg').src = URL.createObjectURL(frame);
+      $('killcamPanel').hidden = !clip;  // if recording failed, the photo takes the whole screen
+      if (clip) stopKillCam = playKillCam($('clip'), clip, shotAt, { onShot: hitMarker });
+      $('result').classList.add('show');
+    }
+
+    // Replays the shot moment in the kill cam: crosshair pops and the screen flashes.
+    function hitMarker() {
+      const x = $('killcamCrosshair');
+      x.classList.remove('pop');
+      void x.offsetWidth;  // restart the animation
+      x.classList.add('pop');
+      flash();
+    }
+
+    function flash() {
+      $('flash').classList.add('on');
+      requestAnimationFrame(() => requestAnimationFrame(() => $('flash').classList.remove('on')));
+    }
+
+    function bang() {
+      flash();
+      navigator.vibrate?.(80);
+      if (!audio) return;
+      // Short burst of decaying noise.
+      const len = audio.sampleRate * 0.25;
+      const buf = audio.createBuffer(1, len, audio.sampleRate);
+      const data = buf.getChannelData(0);
+      for (let i = 0; i < len; i++) data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 4);
+      const src = audio.createBufferSource();
+      src.buffer = buf;
+      src.connect(audio.destination);
+      src.start();
+    }
+
+    function setStatus(text) { $('status').textContent = text; }
+  </script>
+</body>
+</html>
