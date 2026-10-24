@@ -5,6 +5,7 @@ from unittest.mock import patch
 
 with patch.dict('os.environ', {'DATABASE_URL': 'postgresql://postgres:test@localhost/postgres'}):
     import league_api as api
+    import auth
 
 from fastapi import HTTPException
 from sqlmodel import SQLModel, Session, create_engine
@@ -21,7 +22,7 @@ class LeagueApiTests(unittest.TestCase):
         self.engine.dispose()
 
     def login(self, name):
-        result = api.login(api.LoginInput(name=name), self.session)
+        result = auth.signup(auth.SignupInput(name=name, email=name.lower()+"@example.com", password="test-password-123"), self.session)
         return result, api.current_player(self.session, 'Bearer ' + result['token'])
 
     def test_ui_lifecycle_and_persistence(self):
@@ -84,5 +85,5 @@ class LeagueApiTests(unittest.TestCase):
             api.current_player(self.session, 'Bearer invalid')
         with self.assertRaises(HTTPException):
             api.submit_snipe(lid, api.SnipeInput(targetId=alice.id), self.session, alice)
-        with self.assertRaises(HTTPException):
-            api.login(api.LoginInput(name='   '), self.session)
+        with self.assertRaises(ValueError):
+            auth.signup(auth.SignupInput(name='   ', email='invalid@example.com', password='test-password-123'), self.session)

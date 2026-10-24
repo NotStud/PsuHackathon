@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { getCurrentUser, getLeaderboard, getMyLeagues, signOut } from '../api'
 import { Avatar } from '../components/Avatar'
@@ -7,6 +8,8 @@ import { useAsync } from '../hooks'
 
 export function ProfilePage() {
   const navigate = useNavigate()
+  const [logoutError, setLogoutError] = useState<string | null>(null)
+  const [signingOut, setSigningOut] = useState(false)
   const user = useAsync(getCurrentUser, [])
   // Pull this user's row from each league they're in.
   const stats = useAsync(async () => {
@@ -74,7 +77,14 @@ export function ProfilePage() {
         ))}
       </ul>
 
-      <button className="button button-block" onClick={() => { signOut(); navigate('/login') }}>
+      {logoutError && <p className="error" role="alert">{logoutError}</p>}
+      <button className="button button-block" disabled={signingOut} onClick={async () => {
+        setSigningOut(true)
+        setLogoutError(null)
+        try { await signOut(); navigate('/login') }
+        catch { setLogoutError('Unable to sign out. Please try again.') }
+        finally { setSigningOut(false) }
+      }}>
         Sign out
       </button>
     </>

@@ -38,8 +38,25 @@ Open `/docs` and the home page. On two separate browsers, register players and
 join the same league. Submit a snipe, verify the shared leaderboard and cooldown,
 and reload to confirm persistence. Check camera and motion permission on a phone.
 
-Player registration currently uses a display name and a private browser token;
-it does not verify school email. A new device starts a separate player session.
+Players sign up with a display name, email, and password (12–128 characters).
+Signing in with the same credentials restores the same leagues and scores on
+another device. Passwords are stored as salted PBKDF2-SHA256 hashes, using
+600,000 iterations, and session tokens are stored as hashes. Sessions expire
+after 30 days; logout revokes the current session. Five failed password attempts
+lock that account for 15 minutes. Email verification and password-reset emails
+are not implemented yet.
+
+Existing players should open the same site in the browser they used before this
+update and create an account when prompted. The old browser token proves
+ownership and attaches the account to that player, preserving leagues and scores.
+Without that token, an old display-name player cannot be claimed by name alone.
+The original site hostname must be used because browser storage is per origin.
+
+The new `accounts` and `account_sessions` tables are created at startup alongside
+the existing tables. No existing player or score tables are replaced. Do not
+remove the legacy `player_sessions` table until existing players have upgraded.
+
+Password storage reference: https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html
 
 ## Render setup
 
@@ -56,3 +73,25 @@ Alternatively choose New > Web Service, select Docker and the repository root,
 choose Free, and add the same `DATABASE_URL` secret. The Dockerfile handles the
 build and start commands. Render's free web service sleeps after 15 minutes
 without traffic; the next request wakes it. No extra database is needed.
+
+## Custom domain: sniped.photo
+
+Use the existing Render service and the same DATABASE_URL. Adding a hostname does
+not require copying or replacing the database. API requests use relative `/api`
+paths, so the frontend automatically calls the backend through the new domain.
+
+1. Deploy the email/password account changes first. Existing players should
+   create their account on the old Render address, in their original browser,
+   before moving to the new domain. Browser tokens do not cross domains.
+2. Open the existing Render service > Settings > Custom Domains, add
+   `sniped.photo`, and save. Render also adds the matching `www` hostname.
+3. At the DNS provider, configure the root and `www` records shown by Render.
+   Use its provider-specific instructions, especially for Cloudflare.
+   Change only the web-host records; keep email and verification records.
+4. Return to Render and verify the domains. Wait for HTTPS certificate issuance.
+5. Test https://sniped.photo/ on desktop and phone. Sign in with an existing
+   account and confirm its leagues and scores are present.
+6. Share the new address. Keep the old Render hostname available while players
+   finish attaching accounts to their old browser sessions.
+
+Official instructions: https://render.com/docs/custom-domains

@@ -81,3 +81,22 @@ class LeagueSnipe(SQLModel, table=True):
     target_id: int = Field(foreign_key="players.id")
     photo_url: str | None = None
     created_at: NaiveDatetime = Field(default_factory=utc_now)
+
+
+class Account(SQLModel, table=True):
+    __tablename__ = "accounts"
+
+    id: int | None = Field(default=None, primary_key=True)
+    email: str = Field(unique=True, index=True)
+    password_hash: str
+    player_id: int = Field(foreign_key="players.id", unique=True, index=True)
+    failed_logins: int = 0
+    locked_until: NaiveDatetime | None = None
+
+
+class AccountSession(SQLModel, table=True):
+    __tablename__ = "account_sessions"
+
+    token_hash: str = Field(primary_key=True)
+    account_id: int = Field(foreign_key="accounts.id", index=True)
+    expires_at: NaiveDatetime

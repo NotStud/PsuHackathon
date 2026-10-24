@@ -2,7 +2,14 @@ import type { League, Member, Snipe, User } from '../types'
 
 const TOKEN_KEY = 'snipe:token'
 export const getToken = () => localStorage.getItem(TOKEN_KEY)
-export function signOut() { localStorage.removeItem(TOKEN_KEY) }
+function clearSession() {
+  localStorage.removeItem(TOKEN_KEY)
+  localStorage.removeItem('snipe:lastLeague')
+}
+export async function signOut() {
+  await request('/logout', {})
+  clearSession()
+}
 
 async function request<T>(path: string, body?: unknown): Promise<T> {
   const token = getToken()
@@ -12,21 +19,29 @@ async function request<T>(path: string, body?: unknown): Promise<T> {
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   })
   if (!response.ok) {
-    if (response.status === 401) {
-      signOut()
+    if (response.status === 401 && path !== '/session') {
+      clearSession()
       window.location.assign('/login')
     }
     const error = await response.json().catch(() => null)
-    throw new Error(typeof error?.detail === 'string' ? error.detail : `Request failed (${response.status})`)
+    const detail = error?.detail
+    const message = Array.isArray(detail) ? detail.map((item: { msg: string }) => item.msg).join(' ') : detail
+    throw new Error(typeof message === 'string' ? message : `Request failed (${response.status})`)
   }
   return response.json() as Promise<T>
 }
 
-export async function signIn(name: string): Promise<User> {
-  const result = await request<{ token: string; user: User }>('/session', { name })
+export async function signIn(email: string, password: string): Promise<User> {
+  const result = await request<{ token: string; user: User }>('/session', { email, password })
   localStorage.setItem(TOKEN_KEY, result.token)
   return result.user
 }
+export async function signUp(name: string, email: string, password: string): Promise<User> {
+  const result = await request<{ token: string; user: User }>('/signup', { name, email, password })
+  localStorage.setItem(TOKEN_KEY, result.token)
+  return result.user
+}
+export const getAuthStatus = () => request<{ authenticated: boolean; canUpgrade: boolean }>('/auth/status')
 export const getCurrentUser = () => request<User>('/me')
 export const getMyLeagues = () => request<League[]>('/leagues')
 export const getLeague = (id: string) => request<League>(`/leagues/${id}`)

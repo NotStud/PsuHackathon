@@ -14,7 +14,7 @@ npm run build      # type-check + production build
 
 | Route | File | What it does |
 | --- | --- | --- |
-| `/login` | `src/pages/LoginPage.tsx` | Display name registration |
+| `/login` | `src/pages/LoginPage.tsx` | Email/password sign-in and sign-up |
 | `/leagues` | `src/pages/LeaguesPage.tsx` | Your leagues, join with code, create league |
 | `/leagues/:id` | `src/pages/LeaguePage.tsx` | Leaderboard + recent snipes feed |
 | `/snipe` | `src/pages/SnipePage.tsx` | Full-screen camera: shoot first, then tap who you got → confirm. The app opens here. |
@@ -35,7 +35,9 @@ PostgreSQL session pooler connection string, then start the API:
 
 The API creates its tables on startup. Database credentials stay on the server.
 
-The login page registers a display name and remembers a private browser session.
+The login page supports email/password sign-up and sign-in. Signing in on another
+device restores the same account and player. Existing players can attach an account
+from their original browser session to preserve their leagues and scores.
 League data, membership, snipes, scores and cooldowns persist in PostgreSQL.
 There is no sample-data fallback; new players start with an empty league list.
 

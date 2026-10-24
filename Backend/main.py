@@ -12,6 +12,7 @@ from sqlmodel import Session, SQLModel, select
 from database import create_db_and_tables, get_session
 from models import Player, Game, GamePlayer
 from league_api import router
+from auth import router as auth_router, current_player
 
 
 @asynccontextmanager
@@ -21,6 +22,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(lifespan=lifespan)
+app.include_router(auth_router)
 app.include_router(router)
 UI_DIR = Path(__file__).resolve().parent.parent / "Front-End" / "dist"
 if (UI_DIR / "assets").is_dir():
@@ -36,7 +38,7 @@ def home():
     return FileResponse(UI_DIR / "index.html")
 
 
-@app.post("/players")
+@app.post("/players", dependencies=[Depends(current_player)])
 def create_player(name: str, session: SessionDep):
     name = name.strip()
     if not name or len(name) > 80:
@@ -50,12 +52,12 @@ def create_player(name: str, session: SessionDep):
     return player
 
 
-@app.get("/players")
+@app.get("/players", dependencies=[Depends(current_player)])
 def get_players(session: SessionDep):
     return session.exec(select(Player)).all()
 
 
-@app.post("/games")
+@app.post("/games", dependencies=[Depends(current_player)])
 def create_game(session: SessionDep):
     game = Game(status="waiting", out_duration_seconds=30)
 
@@ -66,12 +68,12 @@ def create_game(session: SessionDep):
     return game
 
 
-@app.get("/games")
+@app.get("/games", dependencies=[Depends(current_player)])
 def get_games(session: SessionDep):
     return session.exec(select(Game).order_by(Game.id.desc())).all()
 
 
-@app.post("/games/{game_id}/players/{player_id}/increment")
+@app.post("/games/{game_id}/players/{player_id}/increment", dependencies=[Depends(current_player)])
 def increment_score(game_id: int, player_id: int, session: SessionDep):
     result = session.execute(
         update(GamePlayer)
@@ -84,7 +86,7 @@ def increment_score(game_id: int, player_id: int, session: SessionDep):
     return session.get(GamePlayer, (game_id, player_id))
 
 
-@app.post("/games/{game_id}/players/{player_id}/reset")
+@app.post("/games/{game_id}/players/{player_id}/reset", dependencies=[Depends(current_player)])
 def reset_score(game_id: int, player_id: int, session: SessionDep):
     player = session.get(GamePlayer, (game_id, player_id))
     if not player:
@@ -96,7 +98,7 @@ def reset_score(game_id: int, player_id: int, session: SessionDep):
     return player
 
 
-@app.post("/games/{game_id}/reset")
+@app.post("/games/{game_id}/reset", dependencies=[Depends(current_player)])
 def reset_scores(game_id: int, session: SessionDep):
     if not session.get(Game, game_id):
         raise HTTPException(404, "Game not found")
@@ -105,7 +107,7 @@ def reset_scores(game_id: int, session: SessionDep):
     return {"message": "All scores reset"}
 
 
-@app.post("/games/{game_id}/join")
+@app.post("/games/{game_id}/join", dependencies=[Depends(current_player)])
 def join_game(game_id: int, player_id: int, session: SessionDep):
     game = session.get(Game, game_id)
     player = session.get(Player, player_id)
@@ -132,7 +134,7 @@ def join_game(game_id: int, player_id: int, session: SessionDep):
     return game_player
 
 
-@app.get("/games/{game_id}/state")
+@app.get("/games/{game_id}/state", dependencies=[Depends(current_player)])
 def game_state(game_id: int, session: SessionDep):
     game = session.get(Game, game_id)
 

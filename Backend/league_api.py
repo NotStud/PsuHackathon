@@ -1,38 +1,21 @@
 """Database-backed API matching the React UI's data contract."""
-import hashlib
 import secrets
 from datetime import timedelta
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field as InputField
 from sqlmodel import Session, select
 
 from database import get_session
-from models import League, LeagueMember, LeagueSnipe, Player, PlayerSession, utc_now
+from auth import current_player, user_json
+from models import League, LeagueMember, LeagueSnipe, Player, utc_now
 
 router = APIRouter(prefix="/api")
 SessionDep = Annotated[Session, Depends(get_session)]
 
 
-def user_json(player):
-    return dict(id=str(player.id), displayName=player.display_name, avatarColor="#6366f1")
-
-
-def current_player(session: SessionDep, authorization: Annotated[str | None, Header()] = None):
-    token = authorization.removeprefix("Bearer ") if authorization else ""
-    login = session.get(PlayerSession, hashlib.sha256(token.encode()).hexdigest())
-    player = session.get(Player, login.player_id) if login else None
-    if not player:
-        raise HTTPException(401, "Please sign in again.")
-    return player
-
-
 PlayerDep = Annotated[Player, Depends(current_player)]
-
-
-class LoginInput(BaseModel):
-    name: str = InputField(min_length=1, max_length=80)
 
 
 class LeagueInput(BaseModel):
@@ -69,21 +52,6 @@ def snipe_json(hit):
     return dict(id=str(hit.id), leagueId=str(hit.league_id), sniperId=str(hit.shooter_id),
                 targetId=str(hit.target_id), photoUrl=hit.photo_url,
                 createdAt=hit.created_at.isoformat() + "Z")
-
-
-@router.post("/session")
-def login(body: LoginInput, session: SessionDep):
-    name = body.name.strip()
-    if not name:
-        raise HTTPException(422, "Enter a display name.")
-    player = Player(display_name=name)
-    session.add(player)
-    session.flush()
-    token = secrets.token_urlsafe(32)
-    session.add(PlayerSession(token_hash=hashlib.sha256(token.encode()).hexdigest(), player_id=player.id))
-    session.commit()
-    session.refresh(player)
-    return dict(token=token, user=user_json(player))
 
 
 @router.get("/me")

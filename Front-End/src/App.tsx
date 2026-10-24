@@ -1,4 +1,5 @@
-import { getToken } from './api'
+import { getAuthStatus } from './api'
+import { useAsync } from './hooks'
 import { BrowserRouter, Navigate, Outlet, Route, Routes } from 'react-router-dom'
 import { AppShell } from './components/AppShell'
 import { LeaguePage } from './pages/LeaguePage'
@@ -8,7 +9,10 @@ import { ProfilePage } from './pages/ProfilePage'
 import { SnipePage } from './pages/SnipePage'
 
 function RequireSession() {
-  return getToken() ? <Outlet /> : <Navigate to="/login" replace />
+  const status = useAsync(getAuthStatus, [])
+  if (status.loading) return <p className="muted">Checking your session…</p>
+  if (status.error) return <p className="error" role="alert">{status.error}</p>
+  return status.data?.authenticated ? <Outlet /> : <Navigate to="/login" replace />
 }
 
 export default function App() {
