@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: snipe
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /
+    envVars:
+      - key: DATABASE_URL
+        sync: false
