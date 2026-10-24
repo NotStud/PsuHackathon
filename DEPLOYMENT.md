@@ -38,7 +38,7 @@ Open `/docs` and the home page. On two separate browsers, register players and
 join the same league. Submit a snipe, verify the shared leaderboard and cooldown,
 and reload to confirm persistence. Check camera and motion permission on a phone.
 
-Players sign up with a display name, email, and password (12–128 characters).
+Players sign up with a display name, email, and password (4–128 characters).
 Signing in with the same credentials restores the same leagues and scores on
 another device. Passwords are stored as salted PBKDF2-SHA256 hashes, using
 600,000 iterations, and session tokens are stored as hashes. Sessions expire

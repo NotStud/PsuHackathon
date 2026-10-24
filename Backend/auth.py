@@ -78,7 +78,7 @@ class LoginInput(BaseModel):
 
 class SignupInput(LoginInput):
     name: str = Field(min_length=1, max_length=80)
-    password: str = Field(min_length=12, max_length=128, repr=False)
+    password: str = Field(min_length=4, max_length=128, repr=False)
 
     @field_validator('name')
     @classmethod

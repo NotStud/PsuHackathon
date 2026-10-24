@@ -145,9 +145,18 @@ class HttpTests(unittest.TestCase):
         self.assertFalse(self.client.get('/api/auth/status', headers=headers).json()['canUpgrade'])
         self.assertEqual(self.client.post('/api/session', json={'name': 'No password'}).status_code, 422)
 
+    def test_four_character_password_signup_and_login(self):
+        created = self.client.post('/api/signup', json={
+            'name': 'Four', 'email': 'four@example.com', 'password': 'abcd',
+        })
+        self.assertEqual(created.status_code, 200, created.text)
+        login = self.client.post('/api/session', json={'email': 'four@example.com', 'password': 'abcd'})
+        self.assertEqual(login.status_code, 200, login.text)
+        self.assertEqual(login.json()['user']['id'], created.json()['user']['id'])
+
     def test_password_validation_lockout_and_legacy_route_protection(self):
         self.assertEqual(self.client.post('/api/signup', json={
-            'name': 'Short', 'email': 'short@example.com', 'password': 'short',
+            'name': 'Short', 'email': 'short@example.com', 'password': 'abc',
         }).status_code, 422)
         self.assertEqual(self.client.post('/api/signup', json={
             'name': 'Invalid', 'email': 'invalid', 'password': 'long-password-123',
