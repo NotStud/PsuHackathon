@@ -153,7 +153,13 @@ class Game:
             players = [dict(p) for p in c.execute('SELECT id,name FROM players ORDER BY name')]
             for p in players:
                 p.update(self._timers(c,p['id'],now))
-                p['score'] = c.execute("SELECT COUNT(*) FROM hit_details WHERE shooter=? AND round_id=? AND status!='reversed'",(p['id'],r['id'])).fetchone()[0]
+                # +1 for each outgoing hit, -1 for each incoming hit this round.
+                # Pending challenges count; reversed hits affect neither player.
+                p['score'] = c.execute('''SELECT COALESCE(SUM(
+                    CASE WHEN shooter=? THEN 1 ELSE 0 END
+                    - CASE WHEN target=? THEN 1 ELSE 0 END), 0)
+                    FROM hit_details WHERE round_id=? AND status!='reversed' ''',
+                    (p['id'], p['id'], r['id'])).fetchone()[0]
             hits = [dict(h) for h in c.execute('SELECT * FROM hit_details WHERE round_id=? ORDER BY at DESC, id DESC LIMIT 100',(r['id'],))]
             # Include older incoming hits and pending challenges across rounds so
             # rollover/the public feed's 100-hit limit cannot hide a disputed shot.
