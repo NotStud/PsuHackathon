@@ -1,6 +1,6 @@
 # Trigger + Camera
 
-Mobile web page: rear-camera viewfinder with a crosshair. Tap **Start** and it's armed (recording) right away: aim at a target, then flick the phone muzzle-up like recoil to shoot. After the shot a **kill cam** plays on its own (no tap needed) and loops: the last 2 s before the shot at normal speed, then slow motion from the shot to the end, with a hit marker on the crosshair (`killcam.js`). **Shoot again** re-arms immediately; **Back to start** returns to the camera preview (not recording) with the Start button.
+Mobile web page: rear-camera viewfinder with a crosshair. Tap **Start** and it's armed (recording) right away: aim at a target, then flick the phone muzzle-up like recoil to shoot. After the shot a **kill cam** plays on its own (no tap needed) and loops: the last 2 s before the shot at normal speed, then slow motion from the shot to the end, with a hit marker on the crosshair (`killcam.js`). Nothing uploads until the player taps **Send** (one shot, one send; **Retry** appears if the upload fails). **Back to start** returns to the camera preview (not recording) with the Start button.
 
 ## Run it on your phone
 

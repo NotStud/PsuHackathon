@@ -29,6 +29,7 @@
     .row { display: flex; gap: 8px; }
     .row > * { flex: 1; }
     button.secondary { background: #ffffff26; }
+    button:disabled { opacity: .6; }
     label { font-size: 13px; display: flex; align-items: center; gap: 8px; }
     label input { flex: 1; }
     #result { position: fixed; inset: 0; background: #000; display: none; flex-direction: column; gap: 2px; }
@@ -81,10 +82,10 @@
       <span class="panel-label">HIT PHOTO</span>
     </div>
     <div class="hud bottom">
-      <div id="verdict">Sending…</div>
+      <div id="verdict"></div>
       <div class="row">
         <button id="toStart" class="secondary">Back to start</button>
-        <button id="again">Shoot again</button>
+        <button id="send">Send</button>
       </div>
     </div>
   </div>
@@ -157,16 +158,28 @@
       }, 1000);
     }
 
+    // The shot waiting on the result screen; it only uploads when Send is tapped.
+    let pendingShot = null;
+
     function closeResult() {
       $('result').classList.remove('show');
       stopKillCam();
       URL.revokeObjectURL($('shotImg').src);
-      $('verdict').textContent = 'Sending…';
+      pendingShot = null;
     }
 
-    $('again').onclick = () => {
-      closeResult();
-      arm();
+    $('send').onclick = async () => {
+      if (!pendingShot) return;
+      $('send').disabled = true;
+      $('send').textContent = 'Sending…';
+      const sent = await upload(pendingShot);
+      if (sent) {
+        pendingShot = null;
+        $('send').hidden = true;
+      } else {
+        $('send').disabled = false;
+        $('send').textContent = 'Retry';
+      }
     };
 
     // Back to the live preview: camera stays on, but nothing records until Start.
@@ -193,11 +206,15 @@
         aim: { x: 0.5, y: 0.5 },                        // crosshair, as a fraction of the frame
         peak_rate: Math.round(peakRate),
       };
+      pendingShot = { frame, clip, meta };
+      $('send').hidden = $('send').disabled = false;
+      $('send').textContent = 'Send';
+      $('verdict').textContent = 'Send your shot to see if it hit';
       showResult(frame, clip, shotAt);
-      upload(frame, clip, meta);
     }
 
-    async function upload(frame, clip, meta) {
+    // Returns true once the server has the shot.
+    async function upload({ frame, clip, meta }) {
       const body = new FormData();
       body.append('meta', JSON.stringify(meta));
       body.append('frame', frame, 'frame.jpg');
@@ -208,9 +225,11 @@
         $('verdict').textContent = !res.ok ? `Upload failed (${res.status})`
           : data.hit === true ? 'HIT' + (data.target ? `: ${data.target}` : '')
           : data.hit === false ? 'Miss'
-          : 'Shot saved';
+          : 'Shot sent';
+        return res.ok;
       } catch (err) {
         $('verdict').textContent = 'Upload failed: ' + err.message;
+        return false;
       }
     }
 
