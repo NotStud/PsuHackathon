@@ -23,7 +23,7 @@ npm run build      # type-check + production build
 ## Backend connection
 
 `src/api/index.ts` calls the FastAPI `/api` endpoints. Start the API on port 8000;
-Vite proxies requests there during development. FastAPI serves `ui/dist` after
+Vite proxies requests there during development. FastAPI serves `Front-End/dist` after
 `npm run build`.
 
 From the repository root, configure `DATABASE_URL` in `.env` using the Supabase

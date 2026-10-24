@@ -22,7 +22,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 app.include_router(router)
-UI_DIR = Path(__file__).resolve().parent.parent / "ui" / "dist"
+UI_DIR = Path(__file__).resolve().parent.parent / "Front-End" / "dist"
 if (UI_DIR / "assets").is_dir():
     app.mount("/assets", StaticFiles(directory=UI_DIR / "assets"), name="assets")
 
@@ -32,7 +32,7 @@ SessionDep = Annotated[Session, Depends(get_session)]
 @app.get("/")
 def home():
     if not (UI_DIR / "index.html").is_file():
-        raise HTTPException(503, "Build the UI with: cd ui && npm install && npm run build")
+        raise HTTPException(503, "Build the UI with: cd Front-End && npm install && npm run build")
     return FileResponse(UI_DIR / "index.html")
 
 
