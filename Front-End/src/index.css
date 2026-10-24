@@ -408,15 +408,13 @@ ol {
 }
 
 .camera,
-.camera video,
-.snipe-shot {
+.camera video {
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
 }
-.camera video,
-.snipe-shot {
+.camera video {
   object-fit: cover;
 }
 .camera-hint {
@@ -493,25 +491,6 @@ ol {
   background: linear-gradient(transparent, rgb(0 0 0 / 0.55));
 }
 
-/* Big, thumb-reachable shutter. */
-.shutter {
-  width: 84px;
-  height: 84px;
-  padding: 0;
-  border: 5px solid #fff;
-  border-radius: 50%;
-  background: var(--accent);
-  box-shadow: 0 0 0 4px rgb(0 0 0 / 0.25), 0 8px 24px rgb(239 68 68 / 0.5);
-  cursor: pointer;
-  transition: transform 0.08s;
-}
-.shutter:active {
-  transform: scale(0.9);
-}
-.shutter:focus-visible {
-  outline: 3px solid #fff;
-  outline-offset: 4px;
-}
 
 /* Target picker slides up over the frozen shot. */
 .sheet {
@@ -678,13 +657,12 @@ ol {
   color: #fff;
   border-radius: 8px;
 }
-.shutter:disabled { opacity: 0.4; cursor: default; }
 
 .motion-trigger {
   position: absolute;
   left: 16px;
   right: 16px;
-  bottom: calc(env(safe-area-inset-bottom) + 130px);
+  bottom: calc(env(safe-area-inset-bottom) + 24px);
   z-index: 2;
   margin: auto;
   max-width: 340px;
@@ -696,4 +674,46 @@ ol {
 }
 .motion-trigger p { margin: 8px 0; font-size: 13px; }
 .motion-trigger label { display: block; font-size: 13px; }
-.motion-trigger input, .motion-trigger meter { display: block; width: 100%; }
+.motion-trigger input { display: block; width: 100%; }
+.flick-meter { height: 6px; margin-top: 8px; border-radius: 3px; background: rgb(255 255 255 / 0.2); overflow: hidden; }
+.flick-meter > div { height: 100%; background: #fff; }
+.flick-meter > div.hot { background: var(--accent); }
+
+/* After the shot: kill cam beside the hit photo, above the target sheet. */
+.shot-review {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: flex-start;
+  gap: 2px;
+  background: #000;  /* hides the live camera behind the review */
+}
+.snipe-screen:has(.shot-review) .sheet { max-height: 55%; }
+.shot-panel { position: relative; flex: 1; height: 45%; overflow: hidden; }
+/* Center-cropped like the live view, so the crosshair is where the shooter aimed. */
+.shot-panel video, .shot-panel img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.shot-crosshair { position: absolute; inset: 0; display: grid; place-items: center; color: var(--accent); pointer-events: none; }
+.shot-crosshair.pop svg { animation: hit-pop 0.5s ease-out; }
+@keyframes hit-pop {
+  from { transform: scale(2.2); filter: drop-shadow(0 0 10px #fff); }
+}
+.shot-label {
+  position: absolute;
+  left: 10px;
+  bottom: 10px;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-shadow: 0 1px 3px #000;
+}
+.shot-label-live::before {
+  content: '';
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: blink 1s steps(2) infinite;
+}
+@keyframes blink { 50% { opacity: 0; } }

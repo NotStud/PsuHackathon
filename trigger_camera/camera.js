@@ -35,6 +35,7 @@ export class CameraRig {
 
   // Starts the clip and the frame buffer. Call this when the player "arms".
   startRecording() {
+    if (this.recorder && this.recorder.state !== 'inactive') this.recorder.stop();
     this.chunks = [];
     const mimeType = this.mimeType;
     this.recorder = new MediaRecorder(this.stream, mimeType ? { mimeType } : undefined);
