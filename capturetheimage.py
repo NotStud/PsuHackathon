@@ -1,12 +1,6 @@
 """
 Camera + hit detection prototype (role: computer vision).
  
-Setup:
-    pip install opencv-python ultralytics
- 
-Run:
-    python hit_detection.py
- 
 Controls:
     SPACE = fake a "shot" event (stands in for the sensor/trigger person's flick)
     Q     = quit
