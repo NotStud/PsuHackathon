@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { getCurrentUser, getLeaderboard, getMyLeagues, signOut } from '../api'
 import { Avatar } from '../components/Avatar'
 import { CooldownBadge } from '../components/CooldownBadge'
+import { CrosshairPicker } from '../components/CrosshairPicker'
 import { PageHeader } from '../components/PageHeader'
 import { useAsync } from '../hooks'
 
@@ -76,6 +77,9 @@ export function ProfilePage() {
           </li>
         ))}
       </ul>
+
+      <h2 className="section-title">Crosshair</h2>
+      <CrosshairPicker />
 
       {logoutError && <p className="error" role="alert">{logoutError}</p>}
       <button className="button button-block" disabled={signingOut} onClick={async () => {

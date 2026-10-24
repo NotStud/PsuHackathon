@@ -10,6 +10,7 @@ import type { FireInfo } from '../../../trigger_camera/trigger.js'
 import { Avatar } from '../components/Avatar'
 import { CooldownBadge } from '../components/CooldownBadge'
 import { CloseIcon, CrosshairIcon } from '../components/Icons'
+import { Crosshair } from '../components/Crosshair'
 import { useAsync, useNow } from '../hooks'
 import type { League, Member } from '../types'
 
@@ -169,7 +170,7 @@ export function SnipePage() {
       {!shot && (
         <>
           <div className="snipe-reticle" aria-hidden>
-            <CrosshairIcon width={96} height={96} strokeWidth={1.25} />
+            <Crosshair size={96} />
           </div>
           {error && <p className="snipe-error" role="alert">{error}</p>}
           <div className="snipe-bottom">
