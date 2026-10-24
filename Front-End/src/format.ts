@@ -15,3 +15,12 @@ export function countdown(untilIso: string, now = Date.now()): string {
   const pad = (n: number) => String(n).padStart(2, '0')
   return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${m}:${pad(s)}`
 }
+
+/** Coarse time remaining for long waits, e.g. "3h 20m" or "2d 4h". */
+export function timeUntil(untilIso: string, now = Date.now()): string {
+  const minutes = Math.max(0, Math.ceil((new Date(untilIso).getTime() - now) / 60_000))
+  if (minutes < 60) return `${minutes}m`
+  const hours = Math.floor(minutes / 60)
+  if (hours < 48) return `${hours}h ${minutes % 60}m`
+  return `${Math.floor(hours / 24)}d ${hours % 24}h`
+}

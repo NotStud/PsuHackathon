@@ -1,4 +1,4 @@
-import type { League, Member, Snipe, User } from '../types'
+import type { League, LeagueRules, Member, Snipe, User } from '../types'
 
 const TOKEN_KEY = 'snipe:token'
 export const getToken = () => localStorage.getItem(TOKEN_KEY)
@@ -48,9 +48,19 @@ export const getLeague = (id: string) => request<League>(`/leagues/${id}`)
 export const getLeaderboard = (id: string) => request<Member[]>(`/leagues/${id}/leaderboard`)
 export const getFeed = (id: string) => request<Snipe[]>(`/leagues/${id}/feed`)
 export const joinLeague = (joinCode: string) => request<League>('/leagues/join', { joinCode })
-export const createLeague = (name: string, cooldownMinutes: number) =>
-  request<League>('/leagues', { name, cooldownMinutes })
-export async function submitSnipe(leagueId: string, targetId: string, photoUrl: string | null): Promise<Snipe> {
+export const createLeague = (name: string, cooldownMinutes: number, rules: LeagueRules = {}) =>
+  request<League>('/leagues', { name, cooldownMinutes, ...rules })
+export const challengeSnipe = (leagueId: string, snipeId: string, reason: string) =>
+  request<Snipe>(`/leagues/${leagueId}/snipes/${snipeId}/challenge`, { reason })
+export const approveChallenge = (leagueId: string, snipeId: string) =>
+  request<Snipe>(`/leagues/${leagueId}/snipes/${snipeId}/approve`, {})
+/** requestId makes retries safe: sending the same shot twice records it once. */
+export async function submitSnipe(
+  leagueId: string,
+  targetId: string,
+  photoUrl: string | null,
+  requestId?: string,
+): Promise<Snipe> {
   // Camera object URLs only exist in this browser; persist the image bytes instead.
   if (photoUrl?.startsWith('blob:')) {
     const blob = await (await fetch(photoUrl)).blob()
@@ -61,5 +71,5 @@ export async function submitSnipe(leagueId: string, targetId: string, photoUrl: 
       reader.readAsDataURL(blob)
     })
   }
-  return request<Snipe>(`/leagues/${leagueId}/snipes`, { targetId: Number(targetId), photoUrl })
+  return request<Snipe>(`/leagues/${leagueId}/snipes`, { targetId: Number(targetId), photoUrl, requestId })
 }
