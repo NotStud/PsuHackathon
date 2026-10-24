@@ -1,4 +1,3 @@
-"""Authoritative rules; no camera or UI dependencies. All times are UTC epoch seconds."""
 import secrets
 import sqlite3
 import time

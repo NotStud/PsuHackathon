@@ -1,4 +1,5 @@
 """Exercise the UI contract against an isolated database; no Supabase writes."""
+from datetime import datetime, timedelta
 import unittest
 from unittest.mock import patch
 
@@ -46,6 +47,30 @@ class LeagueApiTests(unittest.TestCase):
         self.session.rollback()
         with Session(self.engine) as restored:
             self.assertEqual(api.current_player(restored, 'Bearer ' + login['token']).id, alice.id)
+
+    def test_fifteen_minute_cooldown_and_expiry(self):
+        _, alice = self.login('Alice')
+        _, bob = self.login('Bob')
+        league = api.create_league(api.LeagueInput(name='15 minute league', cooldownMinutes=15), self.session, alice)
+        self.assertEqual(league['cooldownMinutes'], 15)
+        lid = int(league['id'])
+        api.join_league(api.JoinInput(joinCode=league['joinCode']), self.session, bob)
+        start = datetime(2026, 10, 24, 12, 0, 0)
+        with patch.object(api, 'utc_now', return_value=start):
+            api.submit_snipe(lid, api.SnipeInput(targetId=bob.id), self.session, alice)
+            board = api.leaderboard(lid, self.session, alice)
+        target = next(row for row in board if row['user']['id'] == str(bob.id))
+        self.assertEqual(target['cooldownUntil'], '2026-10-24T12:15:00Z')
+        with patch.object(api, 'utc_now', return_value=start + timedelta(seconds=899)):
+            with self.assertRaises(HTTPException) as error:
+                api.submit_snipe(lid, api.SnipeInput(targetId=bob.id), self.session, alice)
+            self.assertEqual(error.exception.status_code, 409)
+        self.session.rollback()
+        with patch.object(api, 'utc_now', return_value=start + timedelta(seconds=900)):
+            board = api.leaderboard(lid, self.session, alice)
+            target = next(row for row in board if row['user']['id'] == str(bob.id))
+            self.assertIsNone(target['cooldownUntil'])
+            api.submit_snipe(lid, api.SnipeInput(targetId=bob.id), self.session, alice)
 
     def test_membership_auth_and_self_hit(self):
         _, alice = self.login('Alice')

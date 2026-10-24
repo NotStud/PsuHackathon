@@ -679,3 +679,21 @@ ol {
   border-radius: 8px;
 }
 .shutter:disabled { opacity: 0.4; cursor: default; }
+
+.motion-trigger {
+  position: absolute;
+  left: 16px;
+  right: 16px;
+  bottom: calc(env(safe-area-inset-bottom) + 130px);
+  z-index: 2;
+  margin: auto;
+  max-width: 340px;
+  padding: 12px;
+  border-radius: 12px;
+  background: rgb(0 0 0 / 0.65);
+  color: #fff;
+  text-align: center;
+}
+.motion-trigger p { margin: 8px 0; font-size: 13px; }
+.motion-trigger label { display: block; font-size: 13px; }
+.motion-trigger input, .motion-trigger meter { display: block; width: 100%; }

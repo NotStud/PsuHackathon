@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { getLeaderboard, getMyLeagues, submitSnipe } from '../api'
 import { getCurrentUser } from '../api'
+import { MotionTrigger } from '../camera/MotionTrigger'
 import { CameraView, type CameraHandle } from '../camera/CameraView'
 import { Avatar } from '../components/Avatar'
 import { CooldownBadge } from '../components/CooldownBadge'
@@ -43,6 +44,7 @@ export function SnipePage() {
   const navigate = useNavigate()
   const [params, setParams] = useSearchParams()
   const cameraRef = useRef<CameraHandle>(null)
+  const capturing = useRef(false)
   const [cameraReady, setCameraReady] = useState(false)
 
   const me = useAsync(getCurrentUser, [])
@@ -68,19 +70,29 @@ export function SnipePage() {
     .sort((a, b) => Number(Boolean(a.cooldownUntil)) - Number(Boolean(b.cooldownUntil)))
   const target = targets.find((m) => m.user.id === targetId)
 
-  async function shoot() {
-    if (shot || !cameraReady || !league || board.loading || !me.data) return
-    navigator.vibrate?.(40)
-    const url = await cameraRef.current?.capture()
-    if (!url) return
-    setShot(url)
-    setFlash(true)
-    setTimeout(() => setFlash(false), 180)
+  const canShoot = cameraReady && Boolean(league) && !board.loading && !board.error && Boolean(me.data) && !shot
+
+  async function shoot(steadyAt?: number) {
+    if (!canShoot || capturing.current) return
+    capturing.current = true
+    setError(null)
+    try {
+      const url = await cameraRef.current?.capture(steadyAt)
+      if (!url) throw new Error('Camera is not ready. Try again.')
+      navigator.vibrate?.(40)
+      setShot(url)
+      setFlash(true)
+      setTimeout(() => setFlash(false), 180)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to capture photo.')
+    } finally { capturing.current = false }
   }
 
   // Space / Enter fires the shutter on desktop.
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
+      const element = e.target as HTMLElement | null
+      if (e.repeat || element?.closest('button, input, select, textarea, a, [contenteditable]')) return
       if (!shot && (e.key === ' ' || e.key === 'Enter')) {
         e.preventDefault()
         shoot()
@@ -140,6 +152,7 @@ export function SnipePage() {
             className="snipe-league"
             value={league.id}
             onChange={(e) => changeLeague(e.target.value)}
+            disabled={Boolean(shot)}
             aria-label="League"
           >
             {leagues.data.map((l) => (
@@ -151,18 +164,20 @@ export function SnipePage() {
         )}
       </div>
 
+      <div hidden={Boolean(shot)}><MotionTrigger armed={canShoot} onFire={(steadyAt) => { void shoot(steadyAt) }} /></div>
       {!shot && (
         <>
           <div className="snipe-reticle" aria-hidden>
             <CrosshairIcon width={96} height={96} strokeWidth={1.25} />
           </div>
+          {error && <p className="snipe-error" role="alert">{error}</p>}
           <div className="snipe-bottom">
             {leagues.data?.length === 0 ? (
               <Link to="/leagues" className="button button-primary">
                 Join a league to start sniping
               </Link>
             ) : (
-              <button className="shutter" disabled={!cameraReady || !league || board.loading || !me.data} onClick={shoot} aria-label="Take the shot" />
+              <button className="shutter" disabled={!canShoot} onClick={() => { void shoot() }} aria-label="Take the shot" />
             )}
           </div>
         </>

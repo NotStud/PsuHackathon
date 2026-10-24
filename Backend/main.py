@@ -22,7 +22,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 app.include_router(router)
-UI_DIR = Path(__file__).resolve().parent / "ui" / "dist"
+UI_DIR = Path(__file__).resolve().parent.parent / "ui" / "dist"
 if (UI_DIR / "assets").is_dir():
     app.mount("/assets", StaticFiles(directory=UI_DIR / "assets"), name="assets")
 
