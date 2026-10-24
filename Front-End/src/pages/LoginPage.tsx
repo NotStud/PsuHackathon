@@ -53,12 +53,12 @@ export function LoginPage() {
         </label>
         <label className="field">
           <span>Password</span>
-          <input type="password" minLength={signup ? 12 : 1} maxLength={128} value={password} onChange={(e) => setPassword(e.target.value)} autoComplete={signup ? 'new-password' : 'current-password'} required />
-          {signup && <span className="muted small">Use at least 12 characters.</span>}
+          <input type="password" minLength={signup ? 4 : 1} maxLength={128} value={password} onChange={(e) => setPassword(e.target.value)} autoComplete={signup ? 'new-password' : 'current-password'} required />
+          {signup && <span className="muted small">Use at least 4 characters.</span>}
         </label>
         {signup && <label className="field">
           <span>Confirm password</span>
-          <input type="password" minLength={12} maxLength={128} value={confirmation} onChange={(e) => setConfirmation(e.target.value)} autoComplete="new-password" required />
+          <input type="password" minLength={4} maxLength={128} value={confirmation} onChange={(e) => setConfirmation(e.target.value)} autoComplete="new-password" required />
         </label>}
         {error && <p className="error" role="alert">{error}</p>}
         {status.error && <p className="error" role="alert">{status.error}</p>}
