@@ -62,6 +62,7 @@ class SnipeInput(BaseModel):
     targetId: int
     photoUrl: Optional[str] = InputField(default=None, max_length=5_000_000)
     requestId: Optional[str] = InputField(default=None, max_length=100)
+    crosshair: Optional[str] = InputField(default=None, max_length=40, pattern=r"^[a-z0-9-]+:[a-z0-9-]+$")
 
 
 class ChallengeInput(BaseModel):
@@ -258,6 +259,7 @@ def snipe_json(hit: LeagueSnipe, session: Session, points: int = 0):
         sniperId=str(hit.shooter_id),
         targetId=str(hit.target_id),
         photoUrl=hit.photo_url,
+        crosshair=hit.crosshair,
         points=points,
         status=status,
         challengeReason=challenge_reason,
@@ -497,6 +499,7 @@ def submit_snipe(league_id: int, body: SnipeInput, session: SessionDep, player: 
         shooter_id=player.id,
         target_id=body.targetId,
         photo_url=photo,
+        crosshair=body.crosshair,
         request_id=body.requestId,
         created_at=hit_at
     )

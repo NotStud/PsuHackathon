@@ -90,6 +90,7 @@ class LeagueSnipe(SQLModel, table=True):
     target_id: int = Field(foreign_key="players.id")
     request_id: str | None = Field(default=None, index=True)
     photo_url: str | None = None
+    crosshair: str | None = None  # the shooter's crosshair as "style:color", drawn over the photo
     created_at: NaiveDatetime = Field(default_factory=utc_now)
 
 

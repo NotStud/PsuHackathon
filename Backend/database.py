@@ -50,6 +50,7 @@ def create_db_and_tables():
             ("leagues", "bounty_hours", "DOUBLE PRECISION NOT NULL DEFAULT 24"),
             ("leagues", "creator_id", "INTEGER"),
             ("players", "avatar_url", "TEXT"),
+            ("league_snipes", "crosshair", "VARCHAR"),
         ):
             connection.execute(text(f'ALTER TABLE public."{table}" ADD COLUMN IF NOT EXISTS "{column}" {definition}'))
         for table in SQLModel.metadata.tables:
