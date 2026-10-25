@@ -1,29 +1,37 @@
 import { useEffect, useRef, useState } from 'react'
 import { Crosshair } from '../components/Crosshair'
 import { useCrosshair } from '../crosshairs'
+import { gameAudio, shotSoundBuffer, useShotSound } from './feedback'
 import { canRenderKillCam, renderKillCam } from './renderKillCam'
 
-// One render per shot and crosshair, shared by every screen that offers the download.
+// One render per shot, crosshair and gunshot sound, shared by every screen that offers the download.
 const rendered = new WeakMap<Blob, Map<string, Promise<Blob>>>()
 
-function killCamVideo(clip: Blob, shotAt: number, crosshairSvg: string, key: string) {
-  const byCrosshair = rendered.get(clip) ?? new Map<string, Promise<Blob>>()
-  rendered.set(clip, byCrosshair)
-  if (!byCrosshair.has(key)) {
+async function render(clip: Blob, shotAt: number, crosshairSvg: string, soundId: string) {
+  const ctx = gameAudio()
+  const sound = ctx ? await shotSoundBuffer(soundId).catch(() => null) : null
+  return renderKillCam(clip, shotAt, crosshairSvg, ctx && sound ? { ctx, sound } : null)
+}
+
+function killCamVideo(clip: Blob, shotAt: number, crosshairSvg: string, soundId: string, key: string) {
+  const byChoice = rendered.get(clip) ?? new Map<string, Promise<Blob>>()
+  rendered.set(clip, byChoice)
+  if (!byChoice.has(key)) {
     // If the browser can't render it, fall back to the plain recording.
-    byCrosshair.set(key, renderKillCam(clip, shotAt, crosshairSvg).catch(() => clip))
+    byChoice.set(key, render(clip, shotAt, crosshairSvg, soundId).catch(() => clip))
   }
-  return byCrosshair.get(key)!
+  return byChoice.get(key)!
 }
 
 /**
- * Save the kill cam (with the crosshair and slow motion burned in) to the device, or send
+ * Save the kill cam (crosshair, slow motion and gunshot sound included) to the device, or send
  * it through the phone's share sheet where supported. Rendering starts as soon as this
  * shows, because phones only open the share sheet straight after a tap.
  */
 export function KillCamActions({ clip, shotAt }: { clip: Blob; shotAt: number }) {
   const [choice] = useCrosshair()
-  const key = `${choice.style}:${choice.color}`
+  const [sound] = useShotSound()
+  const key = `${choice.style}:${choice.color}:${sound.shot}`
   const svgHolder = useRef<HTMLSpanElement>(null)
   const [result, setResult] = useState<{ key: string; clip: Blob; video: Blob } | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -33,11 +41,11 @@ export function KillCamActions({ clip, shotAt }: { clip: Blob; shotAt: number })
     const svg = svgHolder.current?.innerHTML.replace('<svg', '<svg xmlns="http://www.w3.org/2000/svg"')
     if (!svg) return
     let cancelled = false
-    void killCamVideo(clip, shotAt, svg, key).then((video) => !cancelled && setResult({ key, clip, video }))
+    void killCamVideo(clip, shotAt, svg, sound.shot, key).then((video) => !cancelled && setResult({ key, clip, video }))
     return () => {
       cancelled = true
     }
-  }, [clip, shotAt, key])
+  }, [clip, shotAt, key, sound.shot])
 
   const video = !canRenderKillCam() ? clip : result?.key === key && result.clip === clip ? result.video : null
 

@@ -1,13 +1,23 @@
 // Turns a raw shot recording into a shareable kill cam video: the same replay the app
 // shows (run-up at normal speed, then slow motion from the shot) with the player's
-// crosshair, hit-marker pop and flash burned in. Plays the clip onto a canvas and
+// crosshair, hit-marker pop and flash burned in, and their gunshot sound on the audio
+// track. Plays the clip onto a canvas and
 // records the canvas, so it takes about as long as the replay itself (a few seconds).
 
 // Match trigger_camera/killcam.js so the download looks like the in-app kill cam.
 const LEAD_S = 2
 const SLOW_RATE = 0.2
 const MAX_SIDE = 720
-const MIME_TYPES = ['video/mp4;codecs=avc1', 'video/mp4', 'video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm']
+const VIDEO_TYPES = ['video/mp4;codecs=avc1', 'video/mp4', 'video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm']
+const AUDIO_VIDEO_TYPES = [
+  'video/mp4;codecs=avc1,mp4a.40.2', 'video/mp4', 'video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm',
+]
+
+/** A gunshot to mix in at the moment of the shot, played through `ctx` into the recording. */
+export interface Gunshot {
+  ctx: AudioContext
+  sound: AudioBuffer
+}
 
 export const canRenderKillCam = () =>
   typeof MediaRecorder !== 'undefined' && typeof HTMLCanvasElement.prototype.captureStream === 'function'
@@ -40,9 +50,28 @@ function loadSvg(svg: string) {
   })
 }
 
-/** `crosshairSvg` is the crosshair's SVG markup (any size; it is scaled to the video). */
-export async function renderKillCam(clip: Blob, shotAt: number, crosshairSvg: string): Promise<Blob> {
+/**
+ * `crosshairSvg` is the crosshair's SVG markup (any size; it is scaled to the video).
+ * With `gunshot`, the video gets an audio track with the gunshot at the moment of the shot.
+ */
+export async function renderKillCam(
+  clip: Blob,
+  shotAt: number,
+  crosshairSvg: string,
+  gunshot: Gunshot | null = null,
+): Promise<Blob> {
   const crosshair = await loadSvg(crosshairSvg)
+  // Sound can only be recorded while the audio context runs (it needs an earlier tap on iOS).
+  if (gunshot && gunshot.ctx.state !== 'running') await gunshot.ctx.resume().catch(() => {})
+  const audioOut = gunshot?.ctx.state === 'running' ? gunshot.ctx.createMediaStreamDestination() : null
+  // Feed silence from the start: Chrome sends no audio until something plays, and the
+  // recording would then start at the gunshot and lose the run-up.
+  const silence = audioOut && gunshot ? gunshot.ctx.createConstantSource() : null
+  if (silence && audioOut) {
+    silence.offset.value = 0
+    silence.connect(audioOut)
+    silence.start()
+  }
   const url = URL.createObjectURL(clip)
   const video = document.createElement('video')
   video.muted = true
@@ -84,13 +113,26 @@ export async function renderKillCam(clip: Blob, shotAt: number, crosshairSvg: st
       }
     }
 
-    const mimeType = MIME_TYPES.find((t) => MediaRecorder.isTypeSupported(t))
-    const recorder = new MediaRecorder(canvas.captureStream(30), mimeType ? { mimeType, videoBitsPerSecond: 5_000_000 } : undefined)
+    const stream = new MediaStream([
+      ...canvas.captureStream(30).getVideoTracks(),
+      ...(audioOut ? audioOut.stream.getAudioTracks() : []),
+    ])
+    const mimeType = (audioOut ? AUDIO_VIDEO_TYPES : VIDEO_TYPES).find((t) => MediaRecorder.isTypeSupported(t))
+    const recorder = new MediaRecorder(stream, mimeType ? { mimeType, videoBitsPerSecond: 5_000_000 } : undefined)
     const chunks: Blob[] = []
     recorder.ondataavailable = (e) => e.data.size && chunks.push(e.data)
     const stopped = once(recorder, 'stop')
 
+    let banged = false
     const tick = () => {
+      // The gunshot plays at normal speed, right as the replay reaches the shot.
+      if (!banged && audioOut && gunshot && video.currentTime >= hitAt) {
+        banged = true
+        const source = gunshot.ctx.createBufferSource()
+        source.buffer = gunshot.sound
+        source.connect(audioOut)
+        source.start()
+      }
       // Slow motion from the shot to the end of the clip.
       const rate = video.currentTime >= hitAt ? SLOW_RATE : 1
       if (video.playbackRate !== rate) video.playbackRate = rate
@@ -111,6 +153,9 @@ export async function renderKillCam(clip: Blob, shotAt: number, crosshairSvg: st
     return new Blob(chunks, { type: recorder.mimeType || mimeType || 'video/webm' })
   } finally {
     cancelAnimationFrame(raf)
+    silence?.stop()
+    audioOut?.stream.getTracks().forEach((track) => track.stop())
+    audioOut?.disconnect()
     video.remove()
     URL.revokeObjectURL(url)
   }
