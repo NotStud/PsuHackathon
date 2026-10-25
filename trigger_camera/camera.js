@@ -37,10 +37,17 @@ export class CameraRig {
   startRecording() {
     if (this.recorder && this.recorder.state !== 'inactive') this.recorder.stop();
     this.chunks = [];
-    const mimeType = this.mimeType;
-    this.recorder = new MediaRecorder(this.stream, mimeType ? { mimeType } : undefined);
-    this.recorder.ondataavailable = e => e.data.size && this.chunks.push(e.data);
-    this.recorder.start(250);
+    this.recorder = null;
+    try {
+      const mimeType = this.mimeType;
+      const recorder = new MediaRecorder(this.stream, mimeType ? { mimeType } : undefined);
+      recorder.ondataavailable = e => e.data.size && this.chunks.push(e.data);
+      recorder.start(250);
+      this.recorder = recorder;
+    } catch (err) {
+      // No video on this browser or camera; the shot still works, just without a clip.
+      console.warn('Video recording unavailable:', err);
+    }
     this.recordingStartedAt = performance.now();
     this._startFrames();
   }
@@ -52,7 +59,9 @@ export class CameraRig {
     if (!recorder || recorder.state === 'inactive') return null;
     await new Promise(r => setTimeout(r, postRollMs));
     return new Promise(resolve => {
-      recorder.onstop = () => resolve(new Blob(this.chunks, { type: recorder.mimeType || 'video/webm' }));
+      recorder.onstop = () => resolve(this.chunks.length
+        ? new Blob(this.chunks, { type: recorder.mimeType || 'video/webm' })
+        : null);
       recorder.stop();
     });
   }
