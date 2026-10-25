@@ -6,6 +6,7 @@ import { CooldownBadge } from '../components/CooldownBadge'
 import { CrosshairPicker } from '../components/CrosshairPicker'
 import { SoundPicker } from '../components/SoundPicker'
 import { PageHeader } from '../components/PageHeader'
+import { InstallTips } from '../components/InstallTips'
 import { useAsync } from '../hooks'
 import { rimFor } from '../rims'
 import { ChevronRightIcon, ShieldIcon, SignOutIcon } from '../components/Icons'
@@ -103,6 +104,8 @@ export function ProfilePage() {
       <h2 className="section-title sound-heading">Gunshot sound</h2>
       <p className="muted small">Tap to hear it. Off mutes all game sounds.</p>
       <SoundPicker firstPlace={firstPlace} />
+
+      <InstallTips />
 
       {logoutError && <p className="error" role="alert">{logoutError}</p>}
       <button className="button button-block signout-button" disabled={signingOut} onClick={async () => {
