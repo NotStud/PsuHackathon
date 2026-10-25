@@ -299,6 +299,7 @@ function ChallengeControls({
   const counts = !snipe.missed || snipe.challenges.some((c) => c.kind === 'hit' && c.status === 'approved')
   const canReverse = counts && isTarget && snipe.status !== 'reversed' && !has('reverse')
   const canClaimHeadshot = counts && isShooter && snipe.status !== 'reversed' && !snipe.headshot && !has('headshot')
+    && !snipe.challenges.some((c) => c.kind === 'hit' && c.claimsHeadshot)  // the miss claim already says headshot
 
   async function run(action: () => Promise<unknown>) {
     setBusy(true)
@@ -326,20 +327,26 @@ function ChallengeControls({
         <div key={c.id} className={`challenge challenge-${c.status}`}>
           <p className="small">
             <strong>{userById.get(c.challengerId)?.displayName ?? 'Someone'}</strong>
-            {{ reverse: ' challenged this snipe', headshot: ' says it was a headshot', hit: ' says this miss was a hit' }[c.kind]}: “{c.reason}”
+            {c.kind === 'reverse' ? ' challenged this snipe'
+              : c.kind === 'headshot' ? ' says it was a headshot'
+              : c.claimsHeadshot ? ' says this miss was a headshot' : ' says this miss was a hit'}: “{c.reason}”
           </p>
           <p className="muted small">
             {c.status === 'pending' && <>
               <span className="badge badge-challenged">Voting</span>{' '}
               {c.yesVotes} of {c.votesNeeded} yes vote{c.votesNeeded === 1 ? '' : 's'} · the snipe stands until then
             </>}
-            {c.status === 'approved' && {
-              reverse: 'Passed: snipe reversed and points given back.',
-              headshot: 'Passed: counted as a headshot, bonus added.',
-              hit: 'Passed: counted as a hit, points added.',
-            }[c.kind]}
+            {c.status === 'approved' && (c.kind === 'reverse' ? 'Passed: snipe reversed and points given back.'
+              : c.kind === 'headshot' ? 'Passed: counted as a headshot, bonus added.'
+              : c.claimsHeadshot ? 'Passed: counted as a headshot hit, points and bonus added.'
+              : 'Passed: counted as a hit, points added.')}
             {c.status === 'rejected' && 'Voted down: the snipe stands as it was.'}
           </p>
+          {c.voterIds.length > 0 && (
+            <p className="small challenge-voters">
+              Voted yes: {c.voterIds.map((id) => userById.get(id)?.displayName ?? 'Someone').join(', ')}
+            </p>
+          )}
           {c.status === 'pending' && isVoter && (
             <div className="vote-buttons">
               {c.voted ? (
@@ -347,7 +354,8 @@ function ChallengeControls({
               ) : (
                 <button className="button button-primary" disabled={busy}
                   onClick={() => void run(() => voteOnChallenge(leagueId, c.id))}>
-                  {busy ? 'Voting…' : { reverse: 'Yes, reverse it', headshot: 'Yes, it was a headshot', hit: 'Yes, it was a hit' }[c.kind]}
+                  {busy ? 'Voting…' : c.kind === 'reverse' ? 'Yes, reverse it'
+                    : c.claimsHeadshot ? 'Yes, it was a headshot' : 'Yes, it was a hit'}
                 </button>
               )}
             </div>

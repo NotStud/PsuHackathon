@@ -73,6 +73,9 @@ class SnipeInput(BaseModel):
     # A shot the app called a miss, sent with the shooter's reason it was really a hit.
     # It counts for nothing until a yes vote on that challenge passes.
     missed: bool = False
+    # The shooter says it was a headshot the app didn't see: with a miss, a headshot hit; with
+    # a hit, a headshot. Either way the league votes on it, and the bonus comes with a yes.
+    claimHeadshot: bool = False
     challengeReason: Optional[str] = InputField(default=None, max_length=500)
 
 
@@ -190,13 +193,13 @@ def compute_league_scores_and_points(league: League, session: Session):
 
     # Challenges that passed: reversed snipes count for nothing, upheld headshot claims get the bonus.
     passed = session.exec(
-        select(Challenge.snipe_id, Challenge.kind)
+        select(Challenge.snipe_id, Challenge.kind, Challenge.headshot)
         .join(LeagueSnipe)
         .where(LeagueSnipe.league_id == league.id, Challenge.status == "approved")
     ).all()
-    reversed_snipe_ids = {snipe_id for snipe_id, kind in passed if kind == "reverse"}
-    headshot_ids = {snipe_id for snipe_id, kind in passed if kind == "headshot"}
-    upheld_miss_ids = {snipe_id for snipe_id, kind in passed if kind == "hit"}
+    reversed_snipe_ids = {snipe_id for snipe_id, kind, _ in passed if kind == "reverse"}
+    headshot_ids = {snipe_id for snipe_id, kind, headshot in passed if kind == "headshot" or headshot}
+    upheld_miss_ids = {snipe_id for snipe_id, kind, _ in passed if kind == "hit"}
 
     snipe_points = {}
     for hit in snipes:
@@ -286,7 +289,8 @@ def votes_needed(league: League, voters: int) -> int:
 def challenge_json(challenge: Challenge, needed: int, session: Session, viewer_id: Optional[int]):
     # Only yes votes count (votes are yes-only now; older no votes are ignored).
     yes = session.exec(select(ChallengeVote.voter_id).where(ChallengeVote.challenge_id == challenge.id,
-                                                             ChallengeVote.approve)).all()
+                                                             ChallengeVote.approve)
+                       .order_by(ChallengeVote.created_at)).all()
     return dict(
         id=str(challenge.id),
         kind=challenge.kind,
@@ -294,8 +298,10 @@ def challenge_json(challenge: Challenge, needed: int, session: Session, viewer_i
         reason=challenge.reason,
         status=challenge.status,
         yesVotes=len(yes),
+        voterIds=[str(voter) for voter in yes],
         votesNeeded=needed,
         voted=viewer_id in yes,
+        claimsHeadshot=challenge.kind == "headshot" or challenge.headshot,
         createdAt=challenge.created_at.isoformat() + "Z",
     )
 
@@ -304,6 +310,7 @@ def snipe_json(hit: LeagueSnipe, session: Session, points: int = 0, viewer_id: O
     challenges = session.exec(select(Challenge).where(Challenge.snipe_id == hit.id).order_by(Challenge.id)).all()
     needed = votes_needed(session.get(League, hit.league_id), len(challenge_voters(hit, session))) if challenges else 0
     passed = {c.kind for c in challenges if c.status == "approved"}
+    headshot = hit.headshot or any(c.status == "approved" and (c.kind == "headshot" or c.headshot) for c in challenges)
     status = ("reversed" if "reverse" in passed
               else "challenged" if any(c.status == "pending" for c in challenges)
               else "missed" if hit.missed and "hit" not in passed else "valid")
@@ -317,7 +324,7 @@ def snipe_json(hit: LeagueSnipe, session: Session, points: int = 0, viewer_id: O
         crosshair=hit.crosshair,
         points=points,
         status=status,
-        headshot=hit.headshot or "headshot" in passed,
+        headshot=headshot,
         missed=hit.missed,
         challenges=[challenge_json(c, needed, session, viewer_id) for c in challenges],
         createdAt=hit.created_at.isoformat() + "Z" if hit.created_at else None
@@ -538,6 +545,9 @@ def submit_snipe(league_id: int, body: SnipeInput, session: SessionDep, player: 
     reason = (body.challengeReason or "").strip()
     if body.missed and not reason:
         raise HTTPException(422, "Say why this miss should count as a hit.")
+    claim_headshot = body.claimHeadshot and not body.headshot  # the app already saw a headshot
+    if claim_headshot and not reason:
+        raise HTTPException(422, "Say why it was a headshot.")
 
     # Apply timers. The snipe counts from the moment it was fired. A miss doesn't make the
     # target immune unless the league votes it a hit.
@@ -565,7 +575,11 @@ def submit_snipe(league_id: int, body: SnipeInput, session: SessionDep, player: 
         fired.snipe_id = hit.id
         session.add(fired)
     if body.missed:
-        session.add(Challenge(snipe_id=hit.id, kind="hit", challenger_id=player.id, reason=reason))
+        session.add(Challenge(snipe_id=hit.id, kind="hit", challenger_id=player.id, reason=reason,
+                              headshot=claim_headshot))
+        session.flush()
+    elif claim_headshot:
+        session.add(Challenge(snipe_id=hit.id, kind="headshot", challenger_id=player.id, reason=reason))
         session.flush()
 
     # Recalculate scores and hit values
@@ -603,8 +617,8 @@ def challenge_snipe(league_id: int, snipe_id: int, body: ChallengeInput, session
         raise HTTPException(409, "This snipe was already reversed.")
     if hit.missed and not any(c.kind == "hit" and c.status == "approved" for c in challenges):
         raise HTTPException(409, "This shot doesn't count as a hit yet.")
-    if kind == "headshot" and hit.headshot:
-        raise HTTPException(409, "This snipe already counts as a headshot.")
+    if kind == "headshot" and (hit.headshot or any(c.kind == "hit" and c.headshot for c in challenges)):
+        raise HTTPException(409, "This snipe already counts as a headshot, or claims one.")
 
     session.add(Challenge(snipe_id=snipe_id, kind=kind, challenger_id=player.id, reason=body.reason.strip()))
     session.flush()

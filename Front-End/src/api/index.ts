@@ -88,18 +88,25 @@ export const challengeSnipe = (leagueId: string, snipeId: string, reason: string
 /** Vote yes on a challenge (there is no no vote). */
 export const voteOnChallenge = (leagueId: string, challengeId: string) =>
   request<Snipe>(`/leagues/${leagueId}/challenges/${challengeId}/vote`, {})
-/**
- * requestId makes retries safe: sending the same shot twice records it once. `missReason`
- * sends a shot the app called a miss, challenged as a hit: it counts once someone votes yes.
- */
+/** How the shot went, and any challenge the shooter sends with it (`reason` explains it). */
+export interface ShotClaim {
+  /** The app saw a headshot. */
+  headshot?: boolean
+  /** The app called it a miss: sent as a challenge that it was a hit, which counts once voted yes. */
+  missed?: boolean
+  /** The shooter says it was a headshot (with a miss, a headshot hit); the bonus comes with a yes vote. */
+  claimHeadshot?: boolean
+  reason?: string
+}
+
+/** requestId makes retries safe: sending the same shot twice records it once. */
 export async function submitSnipe(
   leagueId: string,
   targetId: string,
   photoUrl: string | null,
   requestId?: string,
   crosshair?: string,
-  headshot = false,
-  missReason?: string,
+  { headshot = false, missed = false, claimHeadshot = false, reason }: ShotClaim = {},
 ): Promise<Snipe> {
   // Camera object URLs only exist in this browser; persist the image bytes instead.
   if (photoUrl?.startsWith('blob:')) {
@@ -112,7 +119,7 @@ export async function submitSnipe(
     })
   }
   return request<Snipe>(`/leagues/${leagueId}/snipes`, {
-    targetId: Number(targetId), photoUrl, requestId, crosshair, headshot,
-    missed: missReason !== undefined, challengeReason: missReason,
+    targetId: Number(targetId), photoUrl, requestId, crosshair, headshot, missed, claimHeadshot,
+    challengeReason: reason,
   })
 }
