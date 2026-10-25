@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { useParams } from 'react-router-dom'
-import { challengeSnipe, getFeed, getLeaderboard, getLeague, updateLeagueRules, voteOnChallenge } from '../api'
+import { challengeSnipe, getFeed, getLeaderboard, getLeague, removeMember, updateLeagueRules, voteOnChallenge } from '../api'
 import { getCurrentUser } from '../api'
 import { Avatar } from '../components/Avatar'
 import { rimFor } from '../rims'
@@ -63,7 +63,8 @@ export function LeaguePage() {
 
       {(board.error || feed.error) && <p className="error">{board.error || feed.error}</p>}
       {tab === 'leaderboard' ? (
-        <Leaderboard members={board.data} loading={board.loading} currentUserId={me.data?.id} league={league.data} />
+        <Leaderboard members={board.data} loading={board.loading} currentUserId={me.data?.id} league={league.data}
+          onRemoved={() => { league.reload(); refresh() }} />
       ) : (
         <Feed
           leagueId={leagueId}
@@ -173,14 +174,39 @@ function Leaderboard({
   loading,
   currentUserId,
   league,
+  onRemoved,
 }: {
   members: Member[] | null
   loading: boolean
   currentUserId?: string
   league: League | null
+  onRemoved: () => void
 }) {
+  // The league's creator can remove other players, after confirming.
+  const isCreator = Boolean(league && currentUserId && league.creatorId === currentUserId)
+  const [confirming, setConfirming] = useState<string | null>(null)
+  const [removing, setRemoving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function remove(userId: string) {
+    if (!league) return
+    setRemoving(true)
+    setError(null)
+    try {
+      await removeMember(league.id, userId)
+      setConfirming(null)
+      onRemoved()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setRemoving(false)
+    }
+  }
+
   if (loading && !members) return <p className="muted">Loading…</p>
   return (
+    <>
+    {error && <p className="error small">{error}</p>}
     <ol className="list">
       {members?.map((m, i) => (
         <li key={m.user.id} className={m.user.id === currentUserId ? 'row row-me' : 'row'}>
@@ -198,9 +224,24 @@ function Leaderboard({
             </span>
           </div>
           <span className="points">{m.points}</span>
+          {isCreator && m.user.id !== currentUserId && confirming !== m.user.id && (
+            <button className="link-button small row-remove" onClick={() => setConfirming(m.user.id)}>
+              Remove
+            </button>
+          )}
+          {confirming === m.user.id && (
+            <div className="remove-confirm">
+              <span className="small">Remove {m.user.displayName} from the league?</span>
+              <button className="button button-danger" disabled={removing} onClick={() => void remove(m.user.id)}>
+                {removing ? 'Removing…' : 'Remove'}
+              </button>
+              <button className="button" disabled={removing} onClick={() => setConfirming(null)}>Cancel</button>
+            </div>
+          )}
         </li>
       ))}
     </ol>
+    </>
   )
 }
 

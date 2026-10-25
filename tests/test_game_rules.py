@@ -356,3 +356,29 @@ class GameRulesTests(unittest.TestCase):
         with self.assertRaises(HTTPException) as shooter:
             api.challenge_snipe(lid, int(hit['id']), api.ChallengeInput(kind='no-headshot'), self.session, alice)
         self.assertEqual(shooter.exception.status_code, 403)
+
+    def test_the_creator_can_remove_a_player(self):
+        alice, bob, carol, dave = self.players
+        lid = self.league(self.players)  # Alice made it
+        self.snipe(lid, bob, carol, 0)
+        result = api.remove_member(lid, bob.id, self.session, alice)
+        self.assertNotIn(str(bob.id), result['memberIds'])
+        self.assertNotIn('Bob', self.board(lid, 1))
+        with self.assertRaises(HTTPException) as gone:  # Bob can't see the league any more
+            api.leaderboard(lid, self.session, bob)
+        self.assertEqual(gone.exception.status_code, 403)
+        self.assertEqual(self.board(lid, 1)['Carol']['points'], -1)  # his snipe on Carol still counts
+
+    def test_only_the_creator_removes_and_not_themselves(self):
+        alice, bob, carol, dave = self.players
+        lid = self.league(self.players)
+        with self.assertRaises(HTTPException) as not_creator:
+            api.remove_member(lid, carol.id, self.session, bob)
+        self.assertEqual(not_creator.exception.status_code, 403)
+        with self.assertRaises(HTTPException) as self_kick:
+            api.remove_member(lid, alice.id, self.session, alice)
+        self.assertEqual(self_kick.exception.status_code, 422)
+        api.remove_member(lid, carol.id, self.session, alice)
+        with self.assertRaises(HTTPException) as twice:
+            api.remove_member(lid, carol.id, self.session, alice)
+        self.assertEqual(twice.exception.status_code, 404)

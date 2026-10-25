@@ -408,6 +408,26 @@ def join_league(body: JoinInput, session: SessionDep, player: PlayerDep):
     return league_json(league, session)
 
 
+@router.post("/leagues/{league_id}/members/{member_id}/remove")
+def remove_member(league_id: int, member_id: int, session: SessionDep, player: PlayerDep):
+    """The league creator removes (kicks) another player. Their past snipes stay in the
+    league's history, so points others scored on them still count."""
+    league = require_league(league_id, player, session)
+    if league_owner_id(league, session) != player.id:
+        raise HTTPException(403, "Only the league creator can remove players.")
+    if member_id == player.id:
+        raise HTTPException(422, "You can't remove yourself from your own league.")
+    session.exec(select(League).where(League.id == league_id).with_for_update()).one()
+    member = session.get(LeagueMember, (league_id, member_id))
+    if not member:
+        raise HTTPException(404, "That player isn't in this league.")
+    session.delete(member)
+    session.flush()
+    compute_league_scores_and_points(league, session)
+    session.commit()
+    return league_json(league, session)
+
+
 @router.get("/leagues/{league_id}")
 def get_league(league_id: int, session: SessionDep, player: PlayerDep):
     return league_json(require_league(league_id, player, session), session)

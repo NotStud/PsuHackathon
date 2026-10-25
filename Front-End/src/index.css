@@ -293,6 +293,19 @@ ol {
   border-color: var(--accent);
   background: var(--accent-soft);
 }
+/* League creator only: remove a player from the league, after confirming. */
+.link-button.row-remove { margin-left: 4px; color: var(--text-muted); font-weight: 500; }
+.row:has(.remove-confirm) { flex-wrap: wrap; }
+.remove-confirm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  flex: 1 1 100%;
+  padding-top: 8px;
+}
+.remove-confirm span { flex: 1 1 100%; }
+.button-danger { border-color: var(--error); background: var(--error); color: #fff; }
 .row-main {
   display: flex;
   flex-direction: column;
