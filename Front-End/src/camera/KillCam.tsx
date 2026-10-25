@@ -41,13 +41,16 @@ export function ShotReview({ shot, check }: { shot: Shot; check: PersonCheck | '
         <div className="shot-crosshair" aria-hidden>
           <Crosshair size={56} />
         </div>
-        <span className="shot-label">HIT PHOTO</span>
-        {result && (
-          <button className={highlight ? 'highlight-toggle on' : 'highlight-toggle'} aria-pressed={highlight}
-            onClick={() => setHighlight(!highlight)}>
-            Highlight {highlight ? 'on' : 'off'}
-          </button>
-        )}
+        {/* Label and toggle share one row, so they can't overlap. Green = on, red = off. */}
+        <div className="shot-footer">
+          <span className="shot-label">HIT PHOTO</span>
+          {result && (
+            <button className={highlight ? 'highlight-toggle on' : 'highlight-toggle'} aria-pressed={highlight}
+              aria-label="Highlight people" onClick={() => setHighlight(!highlight)}>
+              Highlight
+            </button>
+          )}
+        </div>
         {check && (
           <span className={`shot-verdict ${!result ? '' : result.headshot ? 'headshot' : result.hit ? 'hit' : 'miss'}`} role="status">
             {check === 'checking' ? 'Checking…' : !result ? 'Not checked' : result.headshot ? 'HEADSHOT' : result.hit ? 'HIT' : 'MISS'}
