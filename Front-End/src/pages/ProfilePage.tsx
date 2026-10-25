@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { getCurrentUser, getLeaderboard, getMyLeagues, signOut } from '../api'
 import { AvatarEditor } from '../components/AvatarEditor'
 import { CooldownBadge } from '../components/CooldownBadge'
@@ -8,6 +8,7 @@ import { SoundPicker } from '../components/SoundPicker'
 import { PageHeader } from '../components/PageHeader'
 import { useAsync } from '../hooks'
 import { rimFor } from '../rims'
+import { ChevronRightIcon, ShieldIcon, SignOutIcon } from '../components/Icons'
 
 export function ProfilePage() {
   const navigate = useNavigate()
@@ -41,7 +42,7 @@ export function ProfilePage() {
   )
 
   return (
-    <>
+    <div className="profile-page">
       <PageHeader title="Profile" />
 
       {(user.error || stats.error) && <p className="error">{user.error || stats.error}</p>}
@@ -69,11 +70,14 @@ export function ProfilePage() {
         </div>
       )}
 
-      <h2 className="section-title">By league</h2>
+      <div className="section-heading"><h2 className="section-title">By league</h2>
+        <span>{stats.data ? `${stats.data.length} Active` : '…'}</span></div>
       {stats.loading && <p className="muted">Loading…</p>}
-      <ul className="list">
+      <ul className="list profile-leagues">
         {stats.data?.map(({ league, member, rank, size }) => (
-          <li key={league.id} className="row">
+          <li key={league.id}>
+            <Link to={`/leagues/${league.id}`} className="row">
+            <span className="profile-league-icon"><ShieldIcon width={19} height={19} /></span>
             <div className="row-main">
               <span className="row-name">{league.name}</span>
               <span className="muted small">
@@ -81,11 +85,14 @@ export function ProfilePage() {
               </span>
             </div>
             {member.cooldownUntil && <CooldownBadge until={member.cooldownUntil} />}
+            <ChevronRightIcon className="league-chevron" width={18} height={18} />
+            </Link>
           </li>
         ))}
       </ul>
 
-      <h2 className="section-title">Crosshair</h2>
+      <div className="section-heading"><h2 className="section-title">Crosshair</h2>
+        <span className="live-reticle"><i /> Live reticle</span></div>
       {lastIn.length > 0 && (
         <p className="last-place-notice">
           You're in last place{stats.data!.length > 1 ? ` in ${lastIn.join(', ')}` : ''}: cracked crosshair and fart sound until you climb out.
@@ -93,20 +100,20 @@ export function ProfilePage() {
       )}
       <CrosshairPicker firstPlace={firstPlace} />
 
-      <h2 className="section-title">Gunshot sound</h2>
+      <h2 className="section-title sound-heading">Gunshot sound</h2>
       <p className="muted small">Tap to hear it. Off mutes all game sounds.</p>
       <SoundPicker firstPlace={firstPlace} />
 
       {logoutError && <p className="error" role="alert">{logoutError}</p>}
-      <button className="button button-block" disabled={signingOut} onClick={async () => {
+      <button className="button button-block signout-button" disabled={signingOut} onClick={async () => {
         setSigningOut(true)
         setLogoutError(null)
         try { await signOut(); navigate('/login') }
         catch { setLogoutError('Unable to sign out. Please try again.') }
         finally { setSigningOut(false) }
       }}>
-        Sign out
+        <SignOutIcon width={18} height={18} /> {signingOut ? 'Signing out…' : 'Sign out'}
       </button>
-    </>
+    </div>
   )
 }

@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { createLeague, getMyLeagues, joinLeague } from '../api'
-import { PageHeader } from '../components/PageHeader'
+import { ChevronRightIcon, ClockIcon, PlayersIcon, PlusIcon } from '../components/Icons'
 import { RulesFields } from '../components/RulesFields'
 import { DEFAULT_RULES } from '../rules'
 import { useAsync } from '../hooks'
@@ -13,21 +13,26 @@ export function LeaguesPage() {
   const [panel, setPanel] = useState<Panel>('none')
 
   return (
-    <>
-      <PageHeader title="Your leagues" />
+    <div className="leagues-page">
+      <header className="leagues-heading">
+        <div className="heading-line"><h1>Your leagues</h1>
+          {leagues && <span className="active-count">{leagues.length} Active</span>}
+        </div>
+        <p>Live assassin targets &amp; real-time cooldown trackers</p>
+      </header>
 
-      <div className="button-row">
+      <div className="button-row league-actions">
         <button
           className={panel === 'join' ? 'button button-primary' : 'button'}
           onClick={() => setPanel(panel === 'join' ? 'none' : 'join')}
         >
-          Join with code
+          <span className="hash-icon" aria-hidden>#</span> Join with code
         </button>
         <button
-          className={panel === 'create' ? 'button button-primary' : 'button'}
+          className="button button-primary"
           onClick={() => setPanel(panel === 'create' ? 'none' : 'create')}
         >
-          Create league
+          <PlusIcon width={20} height={20} /> Create league
         </button>
       </div>
 
@@ -43,22 +48,24 @@ export function LeaguesPage() {
         </div>
       )}
 
-      <ul className="list">
+      <ul className="list league-cards">
         {leagues?.map((league) => (
           <li key={league.id}>
-            <Link to={`/leagues/${league.id}`} className="card card-link">
-              <div>
-                <h2 className="card-title">{league.name}</h2>
-                <p className="muted small">
-                  {league.memberIds.length} players · {league.cooldownMinutes} min cooldown
-                </p>
+            <Link to={`/leagues/${league.id}`} className="league-card">
+              <div className="league-card-main">
+                <h2><span className="league-status-dot" aria-hidden />{league.name}</h2>
+                <div className="league-card-meta">
+                  <span><PlayersIcon />{league.memberIds.length} players</span>
+                  <span className="meta-divider" aria-hidden>·</span>
+                  <span><ClockIcon />{league.cooldownMinutes} min cooldown</span>
+                </div>
               </div>
-              <span className="code">{league.joinCode}</span>
+              <ChevronRightIcon className="league-chevron" width={18} height={18} />
             </Link>
           </li>
         ))}
       </ul>
-    </>
+    </div>
   )
 }
 
