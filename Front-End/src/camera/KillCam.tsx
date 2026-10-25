@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { playKillCam } from '../../../trigger_camera/killcam.js'
-import { CrosshairIcon } from '../components/Icons'
+import { Crosshair } from '../components/Crosshair'
 import type { Shot } from './CameraView'
 import type { PersonCheck } from './personCheck'
 
@@ -48,7 +48,7 @@ export function ShotReview({ shot, check }: { shot: Shot; check: PersonCheck | '
           <video ref={videoRef} muted playsInline />
           {/* Re-keying restarts the hit-marker animation each loop. */}
           <div key={pop} className={pop ? 'shot-crosshair pop' : 'shot-crosshair'} aria-hidden>
-            <CrosshairIcon width={56} height={56} strokeWidth={1.5} />
+            <Crosshair size={56} />
           </div>
           {pop > 0 && <div key={`flash${pop}`} className="snipe-flash" />}
           <span className="shot-label shot-label-live">KILL CAM</span>
@@ -57,7 +57,7 @@ export function ShotReview({ shot, check }: { shot: Shot; check: PersonCheck | '
       <div className="shot-panel">
         <img src={result && highlight ? result.highlighted : shot.photo} alt="Your shot" />
         <div className="shot-crosshair" aria-hidden>
-          <CrosshairIcon width={56} height={56} strokeWidth={1.5} />
+          <Crosshair size={56} />
         </div>
         <span className="shot-label">HIT PHOTO</span>
         {result && (
