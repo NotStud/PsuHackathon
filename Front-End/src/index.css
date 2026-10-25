@@ -829,6 +829,17 @@ ol {
 .target .badge {
   font-size: 0.7rem;
 }
+/* Stack the reloading notice above the Start / trigger panel instead of behind it. */
+.snipe-bottom {
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding-bottom: calc(env(safe-area-inset-bottom) + 24px);
+}
+.snipe-bottom .motion-trigger {
+  position: static;
+  width: 100%;
+}
 .snipe-notice {
   display: flex;
   align-items: center;

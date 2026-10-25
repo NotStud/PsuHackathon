@@ -257,7 +257,7 @@ export function SnipePage() {
             </button>
           </div>
           <p className="muted small">Immunity timers are paused at the moment you fired.</p>
-          {shot.clip && <KillCamActions clip={shot.clip} />}
+          {shot.clip && <KillCamActions clip={shot.clip} shotAt={shot.shotAt} />}
           {missed && <p className="muted">Nobody was in your crosshair, so this shot can't be sent. Go back and try again.</p>}
           {check === 'failed' && <p className="muted small">Couldn't check this shot automatically, so it's up to you.</p>}
           {!missed && <>
@@ -302,7 +302,7 @@ export function SnipePage() {
             <strong>{done.member.user.displayName}</strong> · +{done.points} points
           </p>
           <p className="small">They're safe for the next {league.cooldownMinutes} minutes.</p>
-          {shot?.clip && <KillCamActions clip={shot.clip} />}
+          {shot?.clip && <KillCamActions clip={shot.clip} shotAt={shot.shotAt} />}
           <div className="button-row">
             <Link to={`/leagues/${league.id}`} className="button">
               Leaderboard

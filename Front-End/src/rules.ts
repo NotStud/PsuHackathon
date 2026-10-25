@@ -6,8 +6,8 @@ export type Rules = Required<LeagueRules>
 export const DEFAULT_RULES: Rules = {
   cooldownMinutes: 30,
   shooterCooldownMinutes: 5,
-  pointsPerSnipe: 10,
-  bountyBonusPoints: 10,
-  kingBonusPoints: 5,
+  pointsPerSnipe: 1,
+  bountyBonusPoints: 2,
+  kingBonusPoints: 2,
   bountyHours: 24,
 }

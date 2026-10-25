@@ -14,7 +14,7 @@ export function unlockAudio() {
 // ---------- Building blocks ----------
 
 /** White noise shaped by an envelope: env(0..1 through the sound) -> gain. */
-function noise(ctx: AudioContext, seconds: number, env: (p: number) => number) {
+function noise(ctx: BaseAudioContext, seconds: number, env: (p: number) => number) {
   const len = Math.round(ctx.sampleRate * seconds)
   const buf = ctx.createBuffer(1, len, ctx.sampleRate)
   const data = buf.getChannelData(0)
@@ -24,7 +24,7 @@ function noise(ctx: AudioContext, seconds: number, env: (p: number) => number) {
   return src
 }
 
-function filter(ctx: AudioContext, type: BiquadFilterType, frequency: number) {
+function filter(ctx: BaseAudioContext, type: BiquadFilterType, frequency: number) {
   const f = ctx.createBiquadFilter()
   f.type = type
   f.frequency.value = frequency
@@ -32,7 +32,7 @@ function filter(ctx: AudioContext, type: BiquadFilterType, frequency: number) {
 }
 
 /** Volume node that fades from `peak` to silence over `seconds`, starting at `at`. */
-function fade(ctx: AudioContext, peak: number, seconds: number, at = ctx.currentTime) {
+function fade(ctx: BaseAudioContext, peak: number, seconds: number, at = ctx.currentTime) {
   const g = ctx.createGain()
   g.gain.setValueAtTime(peak, at)
   g.gain.exponentialRampToValueAtTime(0.001, at + seconds)
@@ -40,7 +40,7 @@ function fade(ctx: AudioContext, peak: number, seconds: number, at = ctx.current
 }
 
 /** A tone gliding from `from` Hz to `to` Hz. */
-function tone(ctx: AudioContext, type: OscillatorType, from: number, to: number, seconds: number, at = ctx.currentTime) {
+function tone(ctx: BaseAudioContext, type: OscillatorType, from: number, to: number, seconds: number, at = ctx.currentTime) {
   const osc = ctx.createOscillator()
   osc.type = type
   osc.frequency.setValueAtTime(from, at)
@@ -60,7 +60,7 @@ function play(src: AudioScheduledSourceNode, at: number, seconds: number, ...cha
 let roomIR: AudioBuffer | null = null
 
 /** Reverb for a mid-size room: a few early reflections, then a decaying noise tail. */
-function room(ctx: AudioContext) {
+function room(ctx: BaseAudioContext) {
   if (!roomIR || roomIR.sampleRate !== ctx.sampleRate) {
     const rate = ctx.sampleRate
     const len = Math.round(rate * 1.3)
@@ -83,7 +83,7 @@ function room(ctx: AudioContext) {
  * Layered like a real recording: supersonic crack, muzzle blast whose brightness
  * drops fast, low-end thump, slide click, then the room answering back.
  */
-function realisticShot(ctx: AudioContext) {
+function realisticShot(ctx: BaseAudioContext) {
   const t = ctx.currentTime
 
   // Master: compressor for punch, then overall level.
@@ -130,7 +130,7 @@ function realisticShot(ctx: AudioContext) {
   slide.start(t + 0.07)
 }
 
-export const SHOT_SOUNDS: { id: string; name: string; play?: (ctx: AudioContext) => void }[] = [
+export const SHOT_SOUNDS: { id: string; name: string; play?: (ctx: BaseAudioContext) => void }[] = [
   { id: 'realistic', name: 'Realistic', play: realisticShot },
   {
     id: 'classic', name: 'Classic', play: (ctx) => {
@@ -189,6 +189,22 @@ const soundOn = () => soundPref.get().shot !== 'off'
 export function playShot(id = soundPref.get().shot) {
   if (!audio) return
   SHOT_SOUNDS.find((s) => s.id === id)?.play?.(audio)
+}
+
+/** The game's audio context once a tap has unlocked it (see unlockAudio), else null. */
+export const gameAudio = () => audio
+
+/**
+ * A gunshot rendered to a buffer instead of the speakers, for mixing into a recording
+ * (the downloaded kill cam). Null when the sound is Off.
+ */
+export function shotSoundBuffer(id = soundPref.get().shot): Promise<AudioBuffer | null> {
+  const sound = SHOT_SOUNDS.find((s) => s.id === id)?.play
+  if (!sound) return Promise.resolve(null)
+  const rate = 48_000
+  const offline = new OfflineAudioContext(2, rate * 2, rate)  // 2 s covers the longest tail
+  sound(offline)
+  return offline.startRendering()
 }
 
 // ---------- Game sounds ----------
