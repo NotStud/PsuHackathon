@@ -382,3 +382,40 @@ class GameRulesTests(unittest.TestCase):
         with self.assertRaises(HTTPException) as twice:
             api.remove_member(lid, carol.id, self.session, alice)
         self.assertEqual(twice.exception.status_code, 404)
+
+    def test_a_player_can_leave(self):
+        alice, bob, carol, dave = self.players
+        lid = self.league(self.players)  # Alice made it
+        self.snipe(lid, bob, carol, 0)
+        api.leave_league(lid, self.session, bob)
+        self.assertNotIn(str(lid), [league['id'] for league in api.leagues(self.session, bob)])
+        self.assertNotIn('Bob', self.board(lid, 1))
+        self.assertEqual(self.board(lid, 1)['Carol']['points'], -1)  # his snipe still counts
+        with self.assertRaises(HTTPException) as gone:
+            api.leave_league(lid, self.session, bob)
+        self.assertEqual(gone.exception.status_code, 403)
+
+    def test_the_creator_cannot_leave(self):
+        alice, bob = self.players[:2]
+        lid = self.league([alice, bob])
+        with self.assertRaises(HTTPException) as error:
+            api.leave_league(lid, self.session, alice)
+        self.assertEqual(error.exception.status_code, 422)
+
+    def test_the_creator_can_delete_the_league(self):
+        alice, bob, carol, dave = self.players
+        lid = self.league(self.players, pointsPerSnipe=10)
+        hit = self.snipe(lid, alice, bob, 0)
+        self.vote(lid, self.challenge(lid, hit, bob), carol)  # a challenge and a vote to delete too
+        with self.assertRaises(HTTPException) as not_creator:
+            api.delete_league(lid, self.session, bob)
+        self.assertEqual(not_creator.exception.status_code, 403)
+        api.delete_league(lid, self.session, alice)
+        self.assertIsNone(self.session.get(League, lid))
+        for player in self.players:
+            self.assertEqual(api.leagues(self.session, player), [])
+        with self.assertRaises(HTTPException) as missing:
+            api.leaderboard(lid, self.session, alice)
+        self.assertEqual(missing.exception.status_code, 404)
+        other = self.league([alice, bob])  # other leagues are untouched
+        self.assertEqual(len(self.board(other, 1)), 2)

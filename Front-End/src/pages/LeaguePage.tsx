@@ -1,6 +1,9 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import { useParams } from 'react-router-dom'
-import { challengeSnipe, getFeed, getLeaderboard, getLeague, removeMember, updateLeagueRules, voteOnChallenge } from '../api'
+import { useNavigate, useParams } from 'react-router-dom'
+import {
+  challengeSnipe, deleteLeague, getFeed, getLeaderboard, getLeague, leaveLeague, removeMember, updateLeagueRules,
+  voteOnChallenge,
+} from '../api'
 import { getCurrentUser } from '../api'
 import { Avatar } from '../components/Avatar'
 import { SnipeImage } from '../components/SnipeImage'
@@ -78,7 +81,63 @@ export function LeaguePage() {
           onChange={refresh}
         />
       )}
+
+      {league.data && me.data && (
+        <LeaveOrDelete league={league.data} isCreator={me.data.id === league.data.creatorId} />
+      )}
     </>
+  )
+}
+
+/**
+ * At the bottom of the league: anyone but the creator can leave; the creator can delete the
+ * league for everyone. Both ask first.
+ */
+function LeaveOrDelete({ league, isCreator }: { league: League; isCreator: boolean }) {
+  const navigate = useNavigate()
+  const [confirming, setConfirming] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function confirm() {
+    setBusy(true)
+    setError(null)
+    try {
+      await (isCreator ? deleteLeague(league.id) : leaveLeague(league.id))
+      navigate('/leagues', { replace: true })
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="league-exit">
+      {!confirming ? (
+        <button className="button button-danger-outline button-block" onClick={() => setConfirming(true)}>
+          {isCreator ? 'Delete league' : 'Leave league'}
+        </button>
+      ) : (
+        <div className="exit-confirm" role="alertdialog" aria-label={isCreator ? 'Delete league?' : 'Leave league?'}>
+          <p>
+            {isCreator ? <>
+              <strong>Delete {league.name}?</strong> The league, its leaderboard and all its snipes are deleted for
+              everyone. This can't be undone.
+            </> : <>
+              <strong>Leave {league.name}?</strong> You'll be taken off the leaderboard. You can rejoin later with
+              the code <span className="code">{league.joinCode}</span>.
+            </>}
+          </p>
+          <div className="button-row">
+            <button className="button button-danger" disabled={busy} onClick={() => void confirm()}>
+              {busy ? (isCreator ? 'Deleting…' : 'Leaving…') : isCreator ? 'Delete league' : 'Leave league'}
+            </button>
+            <button className="button" disabled={busy} onClick={() => setConfirming(false)}>Cancel</button>
+          </div>
+        </div>
+      )}
+      {error && <p className="error small">{error}</p>}
+    </div>
   )
 }
 
