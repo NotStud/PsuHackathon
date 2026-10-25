@@ -26,7 +26,7 @@ function saveHighlight(on: boolean) {
  * After a shot: the kill cam (auto-plays and loops, normal speed up to the shot,
  * then slow motion) beside the hit photo. Both are center-cropped like the live
  * view, so the crosshair sits where the shooter aimed. Once the person check is done,
- * the hit photo shows a HIT / MISS verdict, and detected people highlighted (the
+ * the hit photo shows a HEADSHOT / HIT / MISS verdict, and detected people and heads highlighted (the
  * player can toggle the highlight; the choice is remembered on this device).
  */
 export function ShotReview({ shot, check }: { shot: Shot; check: PersonCheck | 'checking' | 'failed' | null }) {
@@ -67,8 +67,8 @@ export function ShotReview({ shot, check }: { shot: Shot; check: PersonCheck | '
           </button>
         )}
         {check && (
-          <span className={`shot-verdict ${check === 'checking' || check === 'failed' ? '' : check.hit ? 'hit' : 'miss'}`} role="status">
-            {check === 'checking' ? 'Checking…' : check === 'failed' ? 'Not checked' : check.hit ? 'HIT' : 'MISS'}
+          <span className={`shot-verdict ${!result ? '' : result.headshot ? 'headshot' : result.hit ? 'hit' : 'miss'}`} role="status">
+            {check === 'checking' ? 'Checking…' : !result ? 'Not checked' : result.headshot ? 'HEADSHOT' : result.hit ? 'HIT' : 'MISS'}
           </span>
         )}
       </div>

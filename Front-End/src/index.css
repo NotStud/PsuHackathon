@@ -854,6 +854,7 @@ ol {
 }
 .shot-verdict.hit { background: #16a34a; }
 .shot-verdict.miss { background: var(--accent); }
+.shot-verdict.headshot { background: #facc15; color: #000; }
 .highlight-toggle {
   position: absolute;
   right: 10px;

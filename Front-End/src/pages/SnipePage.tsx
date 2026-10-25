@@ -269,7 +269,7 @@ export function SnipePage() {
           <div className="success-icon">
             <CrosshairIcon width={56} height={56} />
           </div>
-          <h1>Sniped!</h1>
+          <h1>{typeof check === 'object' && check?.headshot ? 'Headshot!' : 'Sniped!'}</h1>
           <p>
             <strong>{done.member.user.displayName}</strong> · +{done.points} points
           </p>
