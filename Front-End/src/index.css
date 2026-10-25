@@ -1056,3 +1056,22 @@ img.avatar {
   color: #fff;
   font-weight: 600;
 }
+
+/* ---------- Avatar rims (leaderboard positions) ---------- */
+.avatar-frame {
+  position: relative;
+  display: inline-grid;
+  flex-shrink: 0;
+  --rim: 3px;
+}
+/* King: gold rim with a soft glow, and a crown on top. */
+.avatar-frame-king .avatar { box-shadow: 0 0 0 var(--rim) #facc15, 0 0 calc(var(--rim) * 4) rgb(250 204 21 / 0.55); }
+.avatar-crown {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%) rotate(-8deg);
+  color: #facc15;
+  stroke: #a16207;
+  filter: drop-shadow(0 1px 1px rgb(0 0 0 / 0.35));
+  pointer-events: none;
+}

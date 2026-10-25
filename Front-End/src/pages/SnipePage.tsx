@@ -10,6 +10,7 @@ import { bang, playHit, playReload } from '../camera/feedback'
 import type { PersonCheck } from '../camera/personCheck'
 import type { FireInfo } from '../../../trigger_camera/trigger.js'
 import { Avatar } from '../components/Avatar'
+import { rimFor } from '../rims'
 import { CooldownBadge } from '../components/CooldownBadge'
 import { RuleBadges } from '../components/RuleBadges'
 import { CloseIcon, CrosshairIcon } from '../components/Icons'
@@ -297,7 +298,7 @@ export function SnipePage() {
                   onClick={() => setTargetId(m.user.id)}
                   aria-pressed={targetId === m.user.id}
                 >
-                  <Avatar user={m.user} size={48} />
+                  <Avatar user={m.user} size={48} rim={rimFor(m)} />
                   <span>{m.user.displayName}</span>
                   <RuleBadges member={m} league={league} />
                   {m.cooldownUntil && <CooldownBadge until={m.cooldownUntil} frozenAt={firedAt ?? undefined} />}

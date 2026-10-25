@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom'
 import { approveChallenge, challengeSnipe, getFeed, getLeaderboard, getLeague, updateLeagueRules } from '../api'
 import { getCurrentUser } from '../api'
 import { Avatar } from '../components/Avatar'
+import { rimFor } from '../rims'
 import { CooldownBadge } from '../components/CooldownBadge'
 import { Crosshair } from '../components/Crosshair'
 import { TargetIcon } from '../components/Icons'
@@ -171,7 +172,7 @@ function Leaderboard({
       {members?.map((m, i) => (
         <li key={m.user.id} className={m.user.id === currentUserId ? 'row row-me' : 'row'}>
           <span className="rank">{i + 1}</span>
-          <Avatar user={m.user} />
+          <Avatar user={m.user} rim={rimFor(m)} />
           <div className="row-main">
             <span className="row-name">{m.user.displayName}</span>
             <span className="muted small">
