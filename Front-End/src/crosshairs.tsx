@@ -60,13 +60,18 @@ export const CROSSHAIR_COLORS = [
 
 export interface CrosshairChoice { style: string; color: string }
 
-// Last place's crosshair: the classic one with its ring cut into pieces, two of them
-// knocked slightly out of line. The cuts are only in the ring (8 units out), so the
-// dot and the area around it, where the player actually aims, stay clean.
+// Last place's crosshair: the classic one with its ring shattered into four shards,
+// each with jagged, broken-glass ends, wide gaps, and knocked out of place. The
+// shards stay out on the ring (6.2+ units from the center), so the dot and the area
+// around it, where the player actually aims, stay clean.
 CROSSHAIRS.push({
   id: 'cracked', name: 'Cracked', hidden: true, shape: <>
-    <path d="M18.22 17.03A8 8 0 0 1 5.78 17.03M4.07 15.2A8.55 8.55 0 0 1 6.97 5.08
-      M8.62 4.75A8 8 0 0 1 17.66 6.34M18.26 7.78A7.55 7.55 0 0 1 19 14.83" />
+    <path fill="currentColor" stroke="none" d={[
+      'M17.39 16.77L18.23 16.36L17.85 17.46L18.96 16.7L18.74 17.66A8.8 8.8 0 0 1 5.56 18L5.31 16.95L6.4 17.6L6.03 16.58L6.82 17A7.2 7.2 0 0 0 17.39 16.77Z',
+      'M3.55 12.96L3.33 14L2.74 12.81L2.59 14.35L2 13.41A10.1 10.1 0 0 1 6.65 3.43L7.86 3.32L6.84 4.36L8.06 4.11L7.37 4.87A8.5 8.5 0 0 0 3.55 12.96Z',
+      'M9.14 5.72L8.24 5.74L8.99 4.91L7.71 5.13L8.27 4.36A8.5 8.5 0 0 1 16.38 4.71L16.88 5.64L15.69 5.34L16.29 6.2L15.45 6.02A6.9 6.9 0 0 0 9.14 5.72Z',
+      'M16.98 8.31L16.83 7.5L17.73 7.98L17.32 6.86L18.15 7.2A7.8 7.8 0 0 1 19.68 13.35L19.02 14.08L18.85 12.96L18.28 13.74L18.12 12.97A6.2 6.2 0 0 0 16.98 8.31Z',
+    ].join('')} />
     <path d="M12 2v4M12 18v4M2 12h4M18 12h4" />
     <circle cx="12" cy="12" r="1.5" fill="currentColor" />
   </>,

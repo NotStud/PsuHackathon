@@ -137,6 +137,29 @@ function realisticShot(ctx: BaseAudioContext) {
 /** The decoded recording, and where its sound actually starts and how long it lasts. */
 let fart: { buffer: AudioBuffer; start: number; length: number } | null = null
 let fartLoading: Promise<void> | null = null
+/** "Slowed": playing at 80% speed also drops the pitch, for that slowed + reverb sound. */
+const SLOWED = 0.8
+
+let hallIR: AudioBuffer | null = null
+
+/** A big, dark hall: a short pre-delay, then a ~2.5 s smooth decaying tail. */
+function hall(ctx: BaseAudioContext) {
+  if (!hallIR || hallIR.sampleRate !== ctx.sampleRate) {
+    const rate = ctx.sampleRate
+    const len = Math.round(rate * 2.5), pre = Math.round(rate * 0.025)
+    hallIR = ctx.createBuffer(2, len, rate)
+    for (let ch = 0; ch < 2; ch++) {
+      const data = hallIR.getChannelData(ch)
+      let smooth = 0
+      for (let i = pre; i < len; i++) {
+        // Low-passed noise (darker tail), different per ear so it sounds wide.
+        smooth += ((Math.random() * 2 - 1) - smooth) * 0.35
+        data[i] = smooth * Math.exp(-(i - pre) / (rate * 0.6))
+      }
+    }
+  }
+  return hallIR
+}
 
 /**
  * Fetch and decode last place's fart once. Recordings often begin with silence (this
@@ -204,7 +227,8 @@ export const SHOT_SOUNDS: { id: string; name: string; play?: (ctx: BaseAudioCont
     },
   },
   {
-    // Last place's gun: a recorded fart (assets/sounds/last-place-fart.mp3).
+    // Last place's gun: a recorded fart (assets/sounds/last-place-fart.mp3), slowed
+    // down and drenched in a big hall reverb.
     id: 'fart', name: 'Fart', hidden: true, play: (ctx) => {
       if (!fart) {
         void preloadFart()  // first use: it'll be ready next time
@@ -212,7 +236,15 @@ export const SHOT_SOUNDS: { id: string; name: string; play?: (ctx: BaseAudioCont
       }
       const src = ctx.createBufferSource()
       src.buffer = fart.buffer
-      src.connect(ctx.destination)
+      src.playbackRate.value = SLOWED
+      const dry = ctx.createGain()
+      dry.gain.value = 0.7
+      const verb = ctx.createConvolver()
+      verb.buffer = hall(ctx)
+      const wet = ctx.createGain()
+      wet.gain.value = 0.6
+      src.connect(dry).connect(ctx.destination)
+      src.connect(verb).connect(wet).connect(ctx.destination)
       src.start(ctx.currentTime, fart.start, fart.length)
     },
   },
@@ -246,7 +278,7 @@ export function shotSoundBuffer(id = soundPref.get().shot): Promise<AudioBuffer 
   const sound = SHOT_SOUNDS.find((s) => s.id === id)?.play
   if (!sound) return Promise.resolve(null)
   const rate = 48_000
-  const offline = new OfflineAudioContext(2, rate * 2, rate)  // 2 s covers the longest tail
+  const offline = new OfflineAudioContext(2, rate * 3.5, rate)  // covers the longest tail (the slowed, reverbed fart)
   sound(offline)
   return offline.startRendering()
 }
