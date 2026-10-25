@@ -174,54 +174,75 @@ export const SHOT_SOUNDS: { id: string; name: string; play?: (ctx: BaseAudioCont
     },
   },
   {
-    // Last place's gun: a fart. Built like the real thing, as a train of flaps: each
-    // flap is a tiny thump that rings at low "body" resonances and dies fast. The
-    // flaps speed up into the main blast, wobble, then sputter out with gaps; a few
-    // bubbly pops add wetness. Randomized, so no two are the same.
+    // Last place's gun: a fart, modeled like a voice synthesizer models speech: air
+    // pushed through a flapping opening (like buzzing lips) gives a train of sharp,
+    // brassy pulses; body resonances shape them; breathy turbulence rides on each
+    // flap. The flap rate drifts and jitters, sometimes alternates strong/weak
+    // (raspy), and drops into a sputter at the end. Randomized every time.
     id: 'fart', name: 'Fart', hidden: true, play: (ctx) => {
       const rate = ctx.sampleRate
-      const len = 0.8 + Math.random() * 0.35
-      const data = new Float32Array(Math.round(rate * len))
+      const len = 0.75 + Math.random() * 0.35
+      const n = Math.round(rate * len)
+      const source = new Float32Array(n)
+      const air = new Float32Array(n)
 
-      // One flap: damped ringing at two body resonances plus a breathy edge.
-      const f1 = 150 + Math.random() * 50, f2 = 380 + Math.random() * 80
-      const flap = Float32Array.from({ length: Math.round(rate * 0.03) }, (_, i) => {
-        const t = i / rate
-        return Math.sin(2 * Math.PI * f1 * t) * Math.exp(-t / 0.009)
-          + 0.45 * Math.sin(2 * Math.PI * f2 * t) * Math.exp(-t / 0.004)
-          + 0.25 * (Math.random() * 2 - 1) * Math.exp(-t / 0.0015)
-      })
-      const add = (wave: Float32Array, at: number, gain: number) => {
-        for (let i = 0; i < wave.length && at + i < data.length; i++) data[at + i] += wave[i] * gain
-      }
-
-      let wander = 0
-      for (let t = 0; t < len;) {
-        const p = t / len
-        // Flaps per second: ramp up, wobble through the middle, slow to a sputter.
-        wander += (Math.random() - 0.5) * 6
-        wander *= 0.9
-        const speed = p < 0.08 ? 45 + 520 * p : p < 0.7 ? 80 + wander : 80 - 160 * (p - 0.7)
-        const swell = Math.min(1, t / 0.05) * (p < 0.7 ? 1 : 1 - (p - 0.7) / 0.3) ** 0.7
-        // In the sputter, some flaps don't happen.
-        if (p < 0.7 || Math.random() > 0.3) add(flap, Math.round(t * rate), swell * (0.6 + Math.random() * 0.4))
-        if (Math.random() < 0.04) {
-          // Bubbly pop: a short, higher ring.
-          const pop = Float32Array.from({ length: Math.round(rate * 0.012) }, (_, i) =>
-            Math.sin(2 * Math.PI * (900 + Math.random() * 600) * (i / rate)) * Math.exp(-i / (rate * 0.003)))
-          add(pop, Math.round(t * rate), 0.25 * swell)
+      // 1. The flaps: one pulse per opening, open slowly, snap shut.
+      let f0 = 105 + Math.random() * 25
+      let drift = 0, strong = true
+      for (let i = 0; i < n;) {
+        const p = i / n
+        drift += (Math.random() - 0.5) * 3
+        drift *= 0.97
+        const sputter = p > 0.72 ? (p - 0.72) / 0.28 : 0
+        const vibrato = 1 + 0.05 * Math.sin(2 * Math.PI * 5.5 * (i / rate))
+        const pitch = Math.max(28, (f0 + drift) * vibrato * (1 - 0.25 * p) * (1 - 0.6 * sputter))
+        const period = Math.round((rate / pitch) * (0.95 + Math.random() * 0.1))
+        const env = Math.min(1, i / (rate * 0.03)) * (1 - sputter) ** 0.8 * (0.85 + 0.15 * Math.sin(2 * Math.PI * 2.3 * (i / rate)))
+        // Raspy middle: alternate strong / weak flaps; in the sputter, some flaps are skipped.
+        strong = !strong
+        const amp = env * (0.85 + Math.random() * 0.3) * (p > 0.25 && p < 0.7 && !strong ? 0.6 : 1)
+        const skip = sputter > 0 && Math.random() < 0.35 * sputter
+        const open = Math.round(period * 0.55), shut = Math.round(period * 0.12)
+        for (let k = 0; k < period && i + k < n; k++) {
+          let flow = 0
+          if (k < open) flow = 0.5 * (1 - Math.cos(Math.PI * k / open))
+          else if (k < open + shut) flow = Math.cos((Math.PI / 2) * (k - open) / shut)
+          if (!skip) {
+            source[i + k] = flow * amp
+            air[i + k] = (Math.random() * 2 - 1) * flow * amp
+          }
         }
-        t += (1 / Math.max(22, speed)) * (0.85 + Math.random() * 0.3)
+        i += period
       }
 
-      // Normalize to a comfortable peak, then soften the very top end.
-      const peak = data.reduce((m, v) => Math.max(m, Math.abs(v)), 0) || 1
-      for (let i = 0; i < data.length; i++) data[i] = (data[i] / peak) * 0.7
-      const buf = ctx.createBuffer(1, data.length, rate)
-      buf.getChannelData(0).set(data)
+      // 2. Radiation (flow -> sound brightens it), then three body resonances in parallel.
+      const out = new Float32Array(n)
+      const resonate = (x: Float32Array, freq: number, bw: number, gain: number) => {
+        const r = Math.exp(-Math.PI * bw / rate), a1 = 2 * r * Math.cos(2 * Math.PI * freq / rate), a2 = -r * r
+        let y1 = 0, y2 = 0
+        for (let i = 0; i < n; i++) {
+          const y = (1 - r) * x[i] + a1 * y1 + a2 * y2
+          y2 = y1
+          y1 = y
+          out[i] += y * gain
+        }
+      }
+      const buzz = source.map((v, i) => v - (i ? source[i - 1] : 0))
+      resonate(buzz, 230 + Math.random() * 50, 90, 1)
+      resonate(buzz, 650 + Math.random() * 120, 160, 0.6)
+      resonate(buzz, 1500, 300, 0.2)
+      resonate(air, 400, 600, 0.35)
+
+      // 3. Normalize, add a gentle touch of saturation for grit (heavy saturation turns
+      // it into a harsh buzz), and settle around the other sounds' loudness.
+      const peak = out.reduce((m, v) => Math.max(m, Math.abs(v)), 0) || 1
+      for (let i = 0; i < n; i++) out[i] = (Math.tanh((out[i] / peak) * 1.6) / Math.tanh(1.6)) * 0.6
+
+      const buf = ctx.createBuffer(1, n, rate)
+      buf.getChannelData(0).set(out)
       const src = ctx.createBufferSource()
       src.buffer = buf
-      play(src, ctx.currentTime, len, filter(ctx, 'lowpass', 2400))
+      play(src, ctx.currentTime, len, filter(ctx, 'lowpass', 3500))
     },
   },
   { id: 'off', name: 'Off' },
