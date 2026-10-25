@@ -86,7 +86,7 @@ export function SnipePage() {
   const target = targets.find((m) => m.user.id === targetId)
   // Sniper cooldown: after every shot you have to wait before the next one.
   const myRow = board.data?.find((m) => me.data && m.user.id === me.data.id)
-  // Last place in this league is stuck with the cracked crosshair and the dud sound.
+  // Last place in this league is stuck with the cracked crosshair and the fart sound.
   const look = myRow && rimFor(myRow, board.data) === 'easy-target' ? LAST_PLACE : undefined
   const reloadUntil =
     [myRow?.shooterCooldownUntil, shotReload]
@@ -261,7 +261,7 @@ export function SnipePage() {
           <div className="snipe-bottom">
             {look && (
               <p className="snipe-notice">
-                You're in last place: cracked crosshair and dud sound until you climb out.
+                You're in last place: cracked crosshair and fart sound until you climb out.
               </p>
             )}
             {reloadUntil && (

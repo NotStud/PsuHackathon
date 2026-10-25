@@ -130,7 +130,7 @@ function realisticShot(ctx: BaseAudioContext) {
   slide.start(t + 0.07)
 }
 
-/** `hidden` sounds can't be picked; the game assigns them (last place gets "dud"). */
+/** `hidden` sounds can't be picked; the game assigns them (last place gets "fart"). */
 export const SHOT_SOUNDS: { id: string; name: string; play?: (ctx: BaseAudioContext) => void; hidden?: boolean }[] = [
   { id: 'realistic', name: 'Realistic', play: realisticShot },
   {
@@ -174,15 +174,45 @@ export const SHOT_SOUNDS: { id: string; name: string; play?: (ctx: BaseAudioCont
     },
   },
   {
-    // Last place's gun: a sputtering misfire, then a sad "womp womp womp-wahh".
-    id: 'dud', name: 'Dud', hidden: true, play: (ctx) => {
+    // Last place's gun: a fart. A buzzy low tone whose pitch wanders and whose
+    // volume flutters (the "flapping"), through a resonant low-pass, plus a little
+    // breathy noise. Randomized, so no two are quite the same.
+    id: 'fart', name: 'Fart', hidden: true, play: (ctx) => {
       const t = ctx.currentTime
-      play(noise(ctx, 0.02, (p) => 1 - p), t, 0.02, filter(ctx, 'highpass', 2500), fade(ctx, 0.5, 0.02, t))
-      play(noise(ctx, 0.15, (p) => (1 - p) ** 2), t + 0.04, 0.15, filter(ctx, 'lowpass', 600), fade(ctx, 0.3, 0.15, t + 0.04))
-      const notes: [number, number, number, number][] = [[0.25, 294, 277, 0.22], [0.5, 277, 262, 0.22], [0.75, 262, 196, 0.55]]
-      for (const [at, from, to, len] of notes) {
-        play(tone(ctx, 'triangle', from, to, len, t + at), t + at, len, filter(ctx, 'lowpass', 1400), fade(ctx, 0.35, len, t + at))
+      const len = 0.75 + Math.random() * 0.3
+      const step = 0.018
+
+      const buzz = ctx.createOscillator()
+      buzz.type = 'sawtooth'
+      const flutter = ctx.createGain()
+      const muffle = filter(ctx, 'lowpass', 520)
+      muffle.Q.value = 5
+      const breath = noise(ctx, len, () => 1)
+      const breathTone = filter(ctx, 'bandpass', 260)
+      const breathLevel = ctx.createGain()
+
+      let pitch = 95 + Math.random() * 25
+      flutter.gain.setValueAtTime(0, t)
+      breathLevel.gain.setValueAtTime(0, t)
+      for (let at = 0; at < len; at += step) {
+        const p = at / len
+        // Pitch wanders and sags toward the end; volume flaps, swelling then dying away.
+        pitch = Math.max(55, pitch + (Math.random() - 0.55) * 14)
+        buzz.frequency.setValueAtTime(pitch * (1 - p * 0.35), t + at)
+        const swell = Math.min(1, at / 0.04) * (1 - p) ** 0.6
+        const flap = 0.45 + Math.random() * 0.55
+        flutter.gain.setValueAtTime(0.5 * swell * flap, t + at)
+        breathLevel.gain.setValueAtTime(0.25 * swell * flap, t + at)
       }
+      flutter.gain.linearRampToValueAtTime(0, t + len)
+      breathLevel.gain.linearRampToValueAtTime(0, t + len)
+
+      buzz.connect(muffle).connect(flutter).connect(ctx.destination)
+      breath.connect(breathTone).connect(breathLevel).connect(ctx.destination)
+      buzz.start(t)
+      buzz.stop(t + len)
+      breath.start(t)
+      breath.stop(t + len)
     },
   },
   { id: 'off', name: 'Off' },
@@ -259,6 +289,6 @@ function buzz() {
 /** Everything that happens the instant a shot fires. */
 export function bang(forcedSound?: string) {
   buzz()
-  // A forced sound (last place's "dud") replaces the player's choice, but Off still mutes.
+  // A forced sound (last place's fart) replaces the player's choice, but Off still mutes.
   playShot(forcedSound && soundOn() ? forcedSound : undefined)
 }

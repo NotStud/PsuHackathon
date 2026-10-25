@@ -60,22 +60,20 @@ export const CROSSHAIR_COLORS = [
 
 export interface CrosshairChoice { style: string; color: string }
 
-// Last place's crosshair: the classic one, cracked. Every crack stays out on the ring
-// and beyond (5.5+ units from the center), so the dot and the area around it, where
-// the player actually aims, stay clean.
+// Last place's crosshair: the classic one with its ring cut into pieces, two of them
+// knocked slightly out of line. The cuts are only in the ring (8 units out), so the
+// dot and the area around it, where the player actually aims, stay clean.
 CROSSHAIRS.push({
   id: 'cracked', name: 'Cracked', hidden: true, shape: <>
-    <circle cx="12" cy="12" r="8" />
+    <path d="M18.22 17.03A8 8 0 0 1 5.78 17.03M4.07 15.2A8.55 8.55 0 0 1 6.97 5.08
+      M8.62 4.75A8 8 0 0 1 17.66 6.34M18.26 7.78A7.55 7.55 0 0 1 19 14.83" />
     <path d="M12 2v4M12 18v4M2 12h4M18 12h4" />
     <circle cx="12" cy="12" r="1.5" fill="currentColor" />
-    <path strokeWidth="0.75" d="M17.7 6.3l1.2-.5.5-1.3 1-.5M17.7 6.3l-.9 1 .2 1.1M18.9 5.8l.2-1.4
-      M6.3 17.7l-.6 1.2-1.3.4-.3 1.2M6.3 17.7l1-.3.6-1M5.4 18.9l-1.2-.1
-      M19.6 14.6l1.1.9.4 1.3M8.1 4.9l-.7-1.1-1.3-.3" />
   </>,
 })
 
 /** What last place is stuck with, overriding the player's own crosshair and sound. */
-export const LAST_PLACE = { style: 'cracked', color: 'white', sound: 'dud' } as const
+export const LAST_PLACE = { style: 'cracked', color: 'white', sound: 'fart' } as const
 
 const crosshairPref = createPreference<CrosshairChoice>('snipe:crosshair', (saved) => {
   const s = saved as Partial<CrosshairChoice> | null
