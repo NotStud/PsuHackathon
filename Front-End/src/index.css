@@ -851,6 +851,36 @@ ol {
   font-size: 0.9rem;
 }
 
+/* ---------- Person check verdict on the hit photo ---------- */
+.shot-verdict {
+  position: absolute;
+  right: 10px;
+  bottom: 8px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: rgb(0 0 0 / 0.6);
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+.shot-verdict.hit { background: #16a34a; }
+.shot-verdict.miss { background: var(--accent); }
+.shot-verdict.headshot { background: #facc15; color: #000; }
+.highlight-toggle {
+  position: absolute;
+  right: 10px;
+  bottom: 38px;
+  padding: 4px 10px;
+  border: 1px solid rgb(255 255 255 / 0.5);
+  border-radius: 999px;
+  background: rgb(0 0 0 / 0.55);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.highlight-toggle.on { border-color: #22c55e; color: #4ade80; }
+
 /* ---------- Custom crosshairs ---------- */
 /* A thin dark outline keeps any color readable over bright or dark scenes. */
 .crosshair-svg { filter: drop-shadow(0 0 1px rgb(0 0 0 / 0.9)) drop-shadow(0 0 2px rgb(0 0 0 / 0.5)); }
