@@ -6,6 +6,7 @@ import { MotionTrigger } from '../camera/MotionTrigger'
 import { CameraView, type CameraHandle, type Shot } from '../camera/CameraView'
 import { ShotReview } from '../camera/KillCam'
 import { bang, playHit, playReload } from '../camera/feedback'
+import type { PersonCheck } from '../camera/personCheck'
 import type { FireInfo } from '../../../trigger_camera/trigger.js'
 import { Avatar } from '../components/Avatar'
 import { CooldownBadge } from '../components/CooldownBadge'
@@ -16,6 +17,9 @@ import { useAsync, useNow } from '../hooks'
 import type { League, Member } from '../types'
 
 const LAST_LEAGUE_KEY = 'snipe:lastLeague'
+
+// The person-detection library is big, so only pages that shoot load it.
+const personCheck = () => import('../camera/personCheck')
 
 function loadLastLeague(): string | null {
   try {
@@ -63,6 +67,9 @@ export function SnipePage() {
 
   const [started, setStarted] = useState(false)
   const [shot, setShot] = useState<Shot | null>(null)
+  // Was the crosshair on a person? Worked out on the device right after the shot.
+  const [check, setCheck] = useState<PersonCheck | 'checking' | 'failed' | null>(null)
+  const checking = useRef<Shot | null>(null)
   const [flash, setFlash] = useState(false)
   const [targetId, setTargetId] = useState<string | null>(null)
   // One ID per shot, so a retried send can't record the same snipe twice.
@@ -83,8 +90,14 @@ export function SnipePage() {
   const reloadUntil =
     myRow?.shooterCooldownUntil && Date.parse(myRow.shooterCooldownUntil) > now ? myRow.shooterCooldownUntil : null
 
+  const missed = typeof check === 'object' && check !== null && !check.hit
+  const canSend = check !== 'checking' && !missed
+
   const canShoot =
     cameraReady && Boolean(league) && !board.loading && !board.error && Boolean(me.data) && !shot && !reloadUntil
+
+  // Fetch the person-detection model while the player is still aiming.
+  useEffect(() => { personCheck().then((m) => m.preloadPersonCheck()).catch(() => {}) }, [])
 
   // Record while the trigger is armed, so the kill cam has the run-up to the shot.
   useEffect(() => {
@@ -104,6 +117,13 @@ export function SnipePage() {
       const taken = await cameraRef.current?.takeShot(fired)
       if (!taken) throw new Error('Camera is not ready. Try again.')
       setShot(taken)
+      setCheck('checking')
+      checking.current = taken
+      personCheck().then((m) => m.checkPerson(taken.photo)).then(
+        (result) => { if (checking.current === taken) setCheck(result) },
+        // If the check can't run (e.g. the model can't download), don't block a real hit.
+        () => { if (checking.current === taken) setCheck('failed') },
+      )
       setRequestId(crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to capture photo.')
@@ -111,7 +131,7 @@ export function SnipePage() {
   }
 
   async function confirm() {
-    if (!league || !target || !shot || submitting) return
+    if (!league || !target || !shot || submitting || !canSend) return
     setSubmitting(true)
     setError(null)
     try {
@@ -129,6 +149,8 @@ export function SnipePage() {
 
   function reset() {
     setShot(null)
+    setCheck(null)
+    checking.current = null
     setRequestId(null)
     setTargetId(null)
     setError(null)
@@ -152,7 +174,7 @@ export function SnipePage() {
     <div className="snipe-screen">
       <CameraView ref={cameraRef} onReady={setCameraReady} />
       {(leagues.error || board.error || me.error) && <p className="snipe-error" role="alert">{leagues.error || board.error || me.error}</p>}
-      {shot && <ShotReview shot={shot} />}
+      {shot && <ShotReview shot={shot} check={check} />}
       {flash && <div className="snipe-flash" />}
 
       <div className="snipe-top">
@@ -207,11 +229,14 @@ export function SnipePage() {
       {shot && !done && (
         <div className="sheet" role="dialog" aria-label="Who did you get?">
           <div className="sheet-header">
-            <h2>Who did you get?</h2>
+            <h2>{missed ? 'Missed!' : 'Who did you get?'}</h2>
             <button className="button" onClick={backToStart}>
               Back to start
             </button>
           </div>
+          {missed && <p className="muted">Nobody was in your crosshair, so this shot can't be sent. Go back and try again.</p>}
+          {check === 'failed' && <p className="muted small">Couldn't check this shot automatically, so it's up to you.</p>}
+          {!missed && <>
           {board.loading && !board.data && <p className="muted">Loading players…</p>}
           {!board.loading && !board.error && targets.length === 0 && <p className="muted">No other players yet. Share the league code to invite friends.</p>}
           <ul className="target-grid">
@@ -234,11 +259,12 @@ export function SnipePage() {
           {error && <p className="error">{error}</p>}
           <button
             className="button button-primary button-block button-large"
-            disabled={!target || submitting}
+            disabled={!target || submitting || !canSend}
             onClick={confirm}
           >
-            {submitting ? 'Sending…' : target ? `Send: snipe ${target.user.displayName}` : 'Tap who you got'}
+            {submitting ? 'Sending…' : check === 'checking' ? 'Checking your shot…' : target ? `Send: snipe ${target.user.displayName}` : 'Tap who you got'}
           </button>
+          </>}
         </div>
       )}
 
@@ -247,7 +273,7 @@ export function SnipePage() {
           <div className="success-icon">
             <CrosshairIcon width={56} height={56} />
           </div>
-          <h1>Sniped!</h1>
+          <h1>{typeof check === 'object' && check?.headshot ? 'Headshot!' : 'Sniped!'}</h1>
           <p>
             <strong>{done.member.user.displayName}</strong> · +{done.points} points
           </p>
