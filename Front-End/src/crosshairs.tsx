@@ -1,4 +1,5 @@
-import { useSyncExternalStore, type ReactNode } from 'react'
+import type { ReactNode } from 'react'
+import { createPreference } from './preferences'
 
 /** Crosshair shapes, drawn in a 24×24 box centered on (12, 12) — the aim point. */
 export const CROSSHAIRS: { id: string; name: string; shape: ReactNode }[] = [
@@ -56,35 +57,13 @@ export const CROSSHAIR_COLORS = [
 
 export interface CrosshairChoice { style: string; color: string }
 
-const KEY = 'snipe:crosshair'
-const DEFAULT: CrosshairChoice = { style: 'classic', color: 'red' }
-const listeners = new Set<() => void>()
-let cached: CrosshairChoice | null = null
-
-function read(): CrosshairChoice {
-  if (cached) return cached
-  try {
-    const saved = JSON.parse(localStorage.getItem(KEY) ?? 'null')
-    cached = {
-      style: CROSSHAIRS.some((c) => c.id === saved?.style) ? saved.style : DEFAULT.style,
-      color: CROSSHAIR_COLORS.some((c) => c.id === saved?.color) ? saved.color : DEFAULT.color,
-    }
-  } catch {
-    cached = DEFAULT  // storage unavailable (private mode etc.)
+const crosshairPref = createPreference<CrosshairChoice>('snipe:crosshair', (saved) => {
+  const s = saved as Partial<CrosshairChoice> | null
+  return {
+    style: CROSSHAIRS.some((c) => c.id === s?.style) ? s!.style! : 'classic',
+    color: CROSSHAIR_COLORS.some((c) => c.id === s?.color) ? s!.color! : 'red',
   }
-  return cached
-}
+})
 
 /** The player's crosshair, saved on this device and shared by every screen that shows it. */
-export function useCrosshair(): [CrosshairChoice, (change: Partial<CrosshairChoice>) => void] {
-  const choice = useSyncExternalStore((onChange) => {
-    listeners.add(onChange)
-    return () => listeners.delete(onChange)
-  }, read)
-  const update = (change: Partial<CrosshairChoice>) => {
-    cached = { ...read(), ...change }
-    try { localStorage.setItem(KEY, JSON.stringify(cached)) } catch { /* just don't remember */ }
-    listeners.forEach((fn) => fn())
-  }
-  return [choice, update]
-}
+export const useCrosshair = crosshairPref.use

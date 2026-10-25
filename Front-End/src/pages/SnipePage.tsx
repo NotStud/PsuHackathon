@@ -5,7 +5,7 @@ import { getCurrentUser } from '../api'
 import { MotionTrigger } from '../camera/MotionTrigger'
 import { CameraView, type CameraHandle, type Shot } from '../camera/CameraView'
 import { ShotReview } from '../camera/KillCam'
-import { bang } from '../camera/feedback'
+import { bang, playHit, playReload } from '../camera/feedback'
 import type { FireInfo } from '../../../trigger_camera/trigger.js'
 import { Avatar } from '../components/Avatar'
 import { CooldownBadge } from '../components/CooldownBadge'
@@ -80,7 +80,9 @@ export function SnipePage() {
 
   // Record while the trigger is armed, so the kill cam has the run-up to the shot.
   useEffect(() => {
-    if (started && canShoot) cameraRef.current?.startRecording()
+    if (!started || !canShoot) return
+    cameraRef.current?.startRecording()
+    playReload()
   }, [started, canShoot])
 
   async function shoot(fired: FireInfo) {
@@ -107,6 +109,7 @@ export function SnipePage() {
       await submitSnipe(league.id, target.user.id, shot.photo)
       saveLastLeague(league.id)
       navigator.vibrate?.([30, 50, 30])
+      playHit()
       setDone(target)
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))

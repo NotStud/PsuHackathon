@@ -756,3 +756,16 @@ ol {
   cursor: pointer;
 }
 .crosshair-swatch.selected { outline: 3px solid var(--text); outline-offset: 2px; }
+
+/* ---------- Sound picker ---------- */
+.sound-picker { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 8px 0 24px; }
+.sound-option {
+  min-height: 48px;
+  border: 2px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  font-weight: 600;
+  cursor: pointer;
+}
+.sound-option.selected { border-color: var(--accent); background: var(--accent-soft); color: var(--text); }
