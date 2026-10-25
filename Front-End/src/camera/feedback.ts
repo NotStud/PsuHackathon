@@ -57,7 +57,81 @@ function play(src: AudioScheduledSourceNode, at: number, seconds: number, ...cha
 
 // ---------- Gunshots ----------
 
+let roomIR: AudioBuffer | null = null
+
+/** Reverb for a mid-size room: a few early reflections, then a decaying noise tail. */
+function room(ctx: AudioContext) {
+  if (!roomIR || roomIR.sampleRate !== ctx.sampleRate) {
+    const rate = ctx.sampleRate
+    const len = Math.round(rate * 1.3)
+    roomIR = ctx.createBuffer(2, len, rate)
+    for (let ch = 0; ch < 2; ch++) {
+      const data = roomIR.getChannelData(ch)
+      for (let i = 0; i < len; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / len) ** 4 * 0.5
+      // Walls and ceiling, slightly different per ear so it sounds wide.
+      for (const [ms, gain] of [[11, 0.8], [19, 0.55], [31, 0.4], [47, 0.3]]) {
+        data[Math.round(rate * (ms + ch * 1.7) / 1000)] += gain
+      }
+    }
+  }
+  const verb = ctx.createConvolver()
+  verb.buffer = roomIR
+  return verb
+}
+
+/**
+ * Layered like a real recording: supersonic crack, muzzle blast whose brightness
+ * drops fast, low-end thump, slide click, then the room answering back.
+ */
+function realisticShot(ctx: AudioContext) {
+  const t = ctx.currentTime
+
+  // Master: compressor for punch, then overall level.
+  const comp = ctx.createDynamicsCompressor()
+  comp.threshold.value = -14
+  comp.ratio.value = 8
+  comp.attack.value = 0.001
+  comp.release.value = 0.2
+  const master = ctx.createGain()
+  master.gain.value = 2.8  // make-up gain after compression; peaks around 0.8
+  comp.connect(master).connect(ctx.destination)
+
+  // Dry layers go through gentle saturation, and also into the room.
+  const shaper = ctx.createWaveShaper()
+  shaper.curve = Float32Array.from({ length: 1024 }, (_, i) => Math.tanh(3 * (i / 511.5 - 1)))
+  const verb = room(ctx)
+  const wet = ctx.createGain()
+  wet.gain.value = 0.32
+  shaper.connect(comp)
+  shaper.connect(verb).connect(wet).connect(comp)
+
+  // 1. Crack: a few milliseconds of bright noise.
+  const crack = noise(ctx, 0.006, (p) => 1 - p)
+  crack.connect(filter(ctx, 'highpass', 1800)).connect(fade(ctx, 1, 0.006, t)).connect(shaper)
+  crack.start(t)
+
+  // 2. Blast: instant attack, fast decay, low-pass sweeping down from very bright.
+  const blast = noise(ctx, 0.4, (p) => Math.exp(-p * 12))
+  const sweep = filter(ctx, 'lowpass', 9000)
+  sweep.frequency.setValueAtTime(9000, t)
+  sweep.frequency.exponentialRampToValueAtTime(450, t + 0.3)
+  blast.connect(sweep).connect(fade(ctx, 0.9, 0.4, t)).connect(shaper)
+  blast.start(t)
+
+  // 3. Thump: the low "boom" you feel.
+  const thump = tone(ctx, 'sine', 150, 42, 0.2, t)
+  thump.connect(fade(ctx, 1, 0.22, t)).connect(shaper)
+  thump.start(t)
+  thump.stop(t + 0.22)
+
+  // 4. Slide cycling, just after the shot; dry so it stays crisp.
+  const slide = noise(ctx, 0.014, (p) => 1 - p)
+  slide.connect(filter(ctx, 'bandpass', 3200)).connect(fade(ctx, 0.12, 0.014, t + 0.07)).connect(comp)
+  slide.start(t + 0.07)
+}
+
 export const SHOT_SOUNDS: { id: string; name: string; play?: (ctx: AudioContext) => void }[] = [
+  { id: 'realistic', name: 'Realistic', play: realisticShot },
   {
     id: 'classic', name: 'Classic', play: (ctx) => {
       play(noise(ctx, 0.25, (p) => (1 - p) ** 4), ctx.currentTime, 0.25, ctx.createGain())
@@ -66,8 +140,9 @@ export const SHOT_SOUNDS: { id: string; name: string; play?: (ctx: AudioContext)
   {
     id: 'sniper', name: 'Sniper', play: (ctx) => {
       const t = ctx.currentTime
-      play(noise(ctx, 0.5, (p) => (1 - p) ** 3), t, 0.5, filter(ctx, 'lowpass', 2500), fade(ctx, 1, 0.5, t))
-      play(tone(ctx, 'sine', 120, 40, 0.4, t), t, 0.4, fade(ctx, 0.9, 0.4, t))
+      // Layer levels keep the combined peak under 1.0, so it doesn't clip.
+      play(noise(ctx, 0.5, (p) => (1 - p) ** 3), t, 0.5, filter(ctx, 'lowpass', 2500), fade(ctx, 0.6, 0.5, t))
+      play(tone(ctx, 'sine', 120, 40, 0.4, t), t, 0.4, fade(ctx, 0.5, 0.4, t))
       // Echo off a far wall.
       play(noise(ctx, 0.6, (p) => (1 - p) ** 2), t + 0.28, 0.6, filter(ctx, 'lowpass', 900), fade(ctx, 0.25, 0.6, t + 0.28))
     },
@@ -102,7 +177,7 @@ export const SHOT_SOUNDS: { id: string; name: string; play?: (ctx: AudioContext)
 
 const soundPref = createPreference<{ shot: string }>('snipe:sound', (saved) => {
   const shot = (saved as { shot?: string } | null)?.shot
-  return { shot: SHOT_SOUNDS.some((s) => s.id === shot) ? shot! : 'classic' }
+  return { shot: SHOT_SOUNDS.some((s) => s.id === shot) ? shot! : 'realistic' }
 })
 
 /** The player's gunshot sound, saved on this device. "Off" silences every effect. */
