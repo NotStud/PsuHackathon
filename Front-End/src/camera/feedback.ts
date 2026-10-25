@@ -174,45 +174,54 @@ export const SHOT_SOUNDS: { id: string; name: string; play?: (ctx: BaseAudioCont
     },
   },
   {
-    // Last place's gun: a fart. A buzzy low tone whose pitch wanders and whose
-    // volume flutters (the "flapping"), through a resonant low-pass, plus a little
-    // breathy noise. Randomized, so no two are quite the same.
+    // Last place's gun: a fart. Built like the real thing, as a train of flaps: each
+    // flap is a tiny thump that rings at low "body" resonances and dies fast. The
+    // flaps speed up into the main blast, wobble, then sputter out with gaps; a few
+    // bubbly pops add wetness. Randomized, so no two are the same.
     id: 'fart', name: 'Fart', hidden: true, play: (ctx) => {
-      const t = ctx.currentTime
-      const len = 0.75 + Math.random() * 0.3
-      const step = 0.018
+      const rate = ctx.sampleRate
+      const len = 0.8 + Math.random() * 0.35
+      const data = new Float32Array(Math.round(rate * len))
 
-      const buzz = ctx.createOscillator()
-      buzz.type = 'sawtooth'
-      const flutter = ctx.createGain()
-      const muffle = filter(ctx, 'lowpass', 520)
-      muffle.Q.value = 5
-      const breath = noise(ctx, len, () => 1)
-      const breathTone = filter(ctx, 'bandpass', 260)
-      const breathLevel = ctx.createGain()
-
-      let pitch = 95 + Math.random() * 25
-      flutter.gain.setValueAtTime(0, t)
-      breathLevel.gain.setValueAtTime(0, t)
-      for (let at = 0; at < len; at += step) {
-        const p = at / len
-        // Pitch wanders and sags toward the end; volume flaps, swelling then dying away.
-        pitch = Math.max(55, pitch + (Math.random() - 0.55) * 14)
-        buzz.frequency.setValueAtTime(pitch * (1 - p * 0.35), t + at)
-        const swell = Math.min(1, at / 0.04) * (1 - p) ** 0.6
-        const flap = 0.45 + Math.random() * 0.55
-        flutter.gain.setValueAtTime(0.5 * swell * flap, t + at)
-        breathLevel.gain.setValueAtTime(0.25 * swell * flap, t + at)
+      // One flap: damped ringing at two body resonances plus a breathy edge.
+      const f1 = 150 + Math.random() * 50, f2 = 380 + Math.random() * 80
+      const flap = Float32Array.from({ length: Math.round(rate * 0.03) }, (_, i) => {
+        const t = i / rate
+        return Math.sin(2 * Math.PI * f1 * t) * Math.exp(-t / 0.009)
+          + 0.45 * Math.sin(2 * Math.PI * f2 * t) * Math.exp(-t / 0.004)
+          + 0.25 * (Math.random() * 2 - 1) * Math.exp(-t / 0.0015)
+      })
+      const add = (wave: Float32Array, at: number, gain: number) => {
+        for (let i = 0; i < wave.length && at + i < data.length; i++) data[at + i] += wave[i] * gain
       }
-      flutter.gain.linearRampToValueAtTime(0, t + len)
-      breathLevel.gain.linearRampToValueAtTime(0, t + len)
 
-      buzz.connect(muffle).connect(flutter).connect(ctx.destination)
-      breath.connect(breathTone).connect(breathLevel).connect(ctx.destination)
-      buzz.start(t)
-      buzz.stop(t + len)
-      breath.start(t)
-      breath.stop(t + len)
+      let wander = 0
+      for (let t = 0; t < len;) {
+        const p = t / len
+        // Flaps per second: ramp up, wobble through the middle, slow to a sputter.
+        wander += (Math.random() - 0.5) * 6
+        wander *= 0.9
+        const speed = p < 0.08 ? 45 + 520 * p : p < 0.7 ? 80 + wander : 80 - 160 * (p - 0.7)
+        const swell = Math.min(1, t / 0.05) * (p < 0.7 ? 1 : 1 - (p - 0.7) / 0.3) ** 0.7
+        // In the sputter, some flaps don't happen.
+        if (p < 0.7 || Math.random() > 0.3) add(flap, Math.round(t * rate), swell * (0.6 + Math.random() * 0.4))
+        if (Math.random() < 0.04) {
+          // Bubbly pop: a short, higher ring.
+          const pop = Float32Array.from({ length: Math.round(rate * 0.012) }, (_, i) =>
+            Math.sin(2 * Math.PI * (900 + Math.random() * 600) * (i / rate)) * Math.exp(-i / (rate * 0.003)))
+          add(pop, Math.round(t * rate), 0.25 * swell)
+        }
+        t += (1 / Math.max(22, speed)) * (0.85 + Math.random() * 0.3)
+      }
+
+      // Normalize to a comfortable peak, then soften the very top end.
+      const peak = data.reduce((m, v) => Math.max(m, Math.abs(v)), 0) || 1
+      for (let i = 0; i < data.length; i++) data[i] = (data[i] / peak) * 0.7
+      const buf = ctx.createBuffer(1, data.length, rate)
+      buf.getChannelData(0).set(data)
+      const src = ctx.createBufferSource()
+      src.buffer = buf
+      play(src, ctx.currentTime, len, filter(ctx, 'lowpass', 2400))
     },
   },
   { id: 'off', name: 'Off' },
