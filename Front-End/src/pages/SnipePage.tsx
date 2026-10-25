@@ -233,7 +233,7 @@ export function SnipePage() {
             </button>
           </div>
           <p className="muted small">Immunity timers are paused at the moment you fired.</p>
-          {shot.clip && <KillCamActions clip={shot.clip} />}
+          {shot.clip && <KillCamActions clip={shot.clip} shotAt={shot.shotAt} />}
           {board.loading && !board.data && <p className="muted">Loading players…</p>}
           {!board.loading && !board.error && targets.length === 0 && <p className="muted">No other players yet. Share the league code to invite friends.</p>}
           <ul className="target-grid">
@@ -274,7 +274,7 @@ export function SnipePage() {
             <strong>{done.member.user.displayName}</strong> · +{done.points} points
           </p>
           <p className="small">They're safe for the next {league.cooldownMinutes} minutes.</p>
-          {shot?.clip && <KillCamActions clip={shot.clip} />}
+          {shot?.clip && <KillCamActions clip={shot.clip} shotAt={shot.shotAt} />}
           <div className="button-row">
             <Link to={`/leagues/${league.id}`} className="button">
               Leaderboard

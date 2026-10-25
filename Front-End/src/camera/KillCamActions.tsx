@@ -1,22 +1,60 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { Crosshair } from '../components/Crosshair'
+import { useCrosshair } from '../crosshairs'
+import { canRenderKillCam, renderKillCam } from './renderKillCam'
 
-/** Save the kill cam to the device, or send it through the phone's share sheet where supported. */
-export function KillCamActions({ clip }: { clip: Blob }) {
-  const [error, setError] = useState<string | null>(null)
-  const ext = clip.type.includes('mp4') ? 'mp4' : 'webm'
-  // Named when saved or shared, e.g. snipe-killcam-2026-10-25-14-03-07.mp4
-  const toFile = () => {
-    const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')
-    return new File([clip], `snipe-killcam-${stamp}.${ext}`, { type: clip.type || `video/${ext}` })
+// One render per shot and crosshair, shared by every screen that offers the download.
+const rendered = new WeakMap<Blob, Map<string, Promise<Blob>>>()
+
+function killCamVideo(clip: Blob, shotAt: number, crosshairSvg: string, key: string) {
+  const byCrosshair = rendered.get(clip) ?? new Map<string, Promise<Blob>>()
+  rendered.set(clip, byCrosshair)
+  if (!byCrosshair.has(key)) {
+    // If the browser can't render it, fall back to the plain recording.
+    byCrosshair.set(key, renderKillCam(clip, shotAt, crosshairSvg).catch(() => clip))
   }
-  const canShare = useMemo(
-    () => typeof navigator.canShare === 'function'
-      && navigator.canShare({ files: [new File([clip], `killcam.${ext}`, { type: clip.type || `video/${ext}` })] }),
-    [clip, ext],
-  )
+  return byCrosshair.get(key)!
+}
+
+/**
+ * Save the kill cam (with the crosshair and slow motion burned in) to the device, or send
+ * it through the phone's share sheet where supported. Rendering starts as soon as this
+ * shows, because phones only open the share sheet straight after a tap.
+ */
+export function KillCamActions({ clip, shotAt }: { clip: Blob; shotAt: number }) {
+  const [choice] = useCrosshair()
+  const key = `${choice.style}:${choice.color}`
+  const svgHolder = useRef<HTMLSpanElement>(null)
+  const [result, setResult] = useState<{ key: string; clip: Blob; video: Blob } | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!canRenderKillCam()) return
+    const svg = svgHolder.current?.innerHTML.replace('<svg', '<svg xmlns="http://www.w3.org/2000/svg"')
+    if (!svg) return
+    let cancelled = false
+    void killCamVideo(clip, shotAt, svg, key).then((video) => !cancelled && setResult({ key, clip, video }))
+    return () => {
+      cancelled = true
+    }
+  }, [clip, shotAt, key])
+
+  const video = !canRenderKillCam() ? clip : result?.key === key && result.clip === clip ? result.video : null
+
+  function toFile(blob: Blob, name = 'snipe-killcam') {
+    const ext = blob.type.includes('mp4') ? 'mp4' : 'webm'
+    return new File([blob], `${name}.${ext}`, { type: blob.type || `video/${ext}` })
+  }
+  // Named when saved or shared, e.g. snipe-killcam-2026-10-25-14-03-07.mp4
+  const stamped = (blob: Blob) =>
+    toFile(blob, `snipe-killcam-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}`)
+
+  const canShare =
+    video !== null && typeof navigator.canShare === 'function' && navigator.canShare({ files: [toFile(video)] })
 
   function download() {
-    const file = toFile()
+    if (!video) return
+    const file = stamped(video)
     const url = URL.createObjectURL(file)
     const link = document.createElement('a')
     link.href = url
@@ -28,9 +66,10 @@ export function KillCamActions({ clip }: { clip: Blob }) {
   }
 
   async function share() {
+    if (!video) return
     setError(null)
     try {
-      await navigator.share({ files: [toFile()], title: 'Snipe kill cam' })
+      await navigator.share({ files: [stamped(video)], title: 'Snipe kill cam' })
     } catch (err) {
       // Closing the share sheet isn't an error.
       if (!(err instanceof DOMException && err.name === 'AbortError')) setError('Sharing failed. Try Download instead.')
@@ -39,8 +78,12 @@ export function KillCamActions({ clip }: { clip: Blob }) {
 
   return (
     <div className="killcam-actions">
-      <button type="button" className="button" onClick={download}>
-        Download kill cam
+      {/* The crosshair to burn into the video, in the player's chosen style and color. */}
+      <span ref={svgHolder} hidden>
+        <Crosshair size={256} />
+      </span>
+      <button type="button" className="button" disabled={!video} onClick={download}>
+        {video ? 'Download kill cam' : 'Preparing kill cam…'}
       </button>
       {canShare && (
         <button type="button" className="button" onClick={() => void share()}>
