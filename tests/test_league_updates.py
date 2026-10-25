@@ -87,6 +87,24 @@ class LeagueUpdatesTests(unittest.TestCase):
         # The shot's own snipe is still allowed while its cooldown runs.
         self.assertEqual(self.snipe(self.alice, self.bob, 6, 'second')['targetId'], str(self.bob.id))
 
+    def test_cooldown_follows_the_league_setting_for_hits_and_misses(self):
+        # A hit: the cooldown runs from the moment it was fired, not from when it was sent.
+        self.fire(self.alice, 'hit', 0)
+        self.snipe(self.alice, self.bob, 2, 'hit')
+        self.assertEqual(self.board(2)['Alice']['shooterCooldownUntil'], '2026-10-25T12:05:00Z')
+        # The creator changes the cooldown; the next shot (a miss) uses the new length.
+        api.update_rules(self.lid, api.RulesInput(shooterCooldownMinutes=12), self.session, self.alice)
+        self.assertEqual(self.fire(self.alice, 'miss', 5)['reloadUntil'], '2026-10-25T12:17:00Z')
+        for request_id, minutes in (('too-soon', 16), ('still-too-soon', 16.9)):
+            with self.subTest(minutes=minutes), self.assertRaises(HTTPException) as error:
+                self.fire(self.alice, request_id, minutes)
+            self.assertEqual(error.exception.status_code, 409)
+        self.fire(self.alice, 'ready', 17)
+        # A league with no cooldown lets the next shot go straight away.
+        api.update_rules(self.lid, api.RulesInput(shooterCooldownMinutes=0), self.session, self.alice)
+        self.fire(self.carol, 'c1', 18)
+        self.fire(self.carol, 'c2', 18)
+
     def test_creator_edits_rules(self):
         league = api.update_rules(self.lid, api.RulesInput(shooterCooldownMinutes=12, bountyHours=6),
                                   self.session, self.alice)
