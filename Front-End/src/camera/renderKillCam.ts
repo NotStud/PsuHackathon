@@ -4,6 +4,13 @@
 // track. Plays the clip onto a canvas and
 // records the canvas, so it takes about as long as the replay itself (a few seconds).
 
+// The app's logo (public/favicon.svg) and name, stamped in the top-left corner.
+const LOGO_SVG =
+  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" rx="8" fill="#ef4444"/>' +
+  '<g fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round"><circle cx="16" cy="16" r="8"/>' +
+  '<path d="M16 4v6M16 22v6M4 16h6M22 16h6"/></g></svg>'
+const BRAND = 'SNIPED'
+
 // Match trigger_camera/killcam.js so the download looks like the in-app kill cam.
 const LEAD_S = 2
 const SLOW_RATE = 0.2
@@ -55,7 +62,7 @@ function loadSvg(svg: string) {
   return new Promise<HTMLImageElement>((resolve, reject) => {
     const image = new Image()
     image.onload = () => resolve(image)
-    image.onerror = () => reject(new Error('Could not draw the crosshair.'))
+    image.onerror = () => reject(new Error('Could not draw the kill cam overlay.'))
     image.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg)
   })
 }
@@ -73,6 +80,7 @@ export async function renderKillCam(
   zoom = 1,
 ): Promise<Blob> {
   const crosshair = await loadSvg(crosshairSvg)
+  const logo = await loadSvg(LOGO_SVG)
   // Sound can only be recorded while the audio context runs (it needs an earlier tap on iOS).
   if (gunshot && gunshot.ctx.state !== 'running') await gunshot.ctx.resume().catch(() => {})
   const audioOut = gunshot?.ctx.state === 'running' && (await audioClockRunning(gunshot.ctx))
@@ -109,6 +117,20 @@ export async function renderKillCam(
     const ctx = canvas.getContext('2d')!
     const { width: w, height: h } = canvas
     const size = Math.round(Math.min(w, h) * 0.18)
+    // Watermark: logo then name, top-left, sized to the video.
+    const mark = Math.round(Math.min(w, h) * 0.085)
+    const pad = Math.round(mark * 0.45)
+    const drawWatermark = () => {
+      ctx.save()
+      ctx.shadowColor = 'rgba(0, 0, 0, 0.6)'
+      ctx.shadowBlur = Math.max(2, mark * 0.15)
+      ctx.drawImage(logo, pad, pad, mark, mark)
+      ctx.font = `900 ${Math.round(mark * 0.62)}px system-ui, -apple-system, 'Segoe UI', sans-serif`
+      ctx.textBaseline = 'middle'
+      ctx.fillStyle = '#fff'
+      ctx.fillText(BRAND, pad + mark * 1.25, pad + mark / 2)
+      ctx.restore()
+    }
 
     const cropW = video.videoWidth / zoom
     const cropH = video.videoHeight / zoom
@@ -127,6 +149,7 @@ export async function renderKillCam(
         ctx.fillStyle = `rgba(255, 255, 255, ${0.7 * (1 - since / 0.08)})`
         ctx.fillRect(0, 0, w, h)
       }
+      drawWatermark()
     }
 
     const stream = new MediaStream([

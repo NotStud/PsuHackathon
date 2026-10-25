@@ -330,9 +330,45 @@ ol {
   letter-spacing: 0.05em;
 }
 
-.league-meta {
+/* League settings: code and points at a glance, the full rules behind a toggle. */
+.league-rules {
   margin-top: -8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
 }
+.league-rules summary {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  list-style: none;
+  cursor: pointer;
+}
+.league-rules summary::-webkit-details-marker { display: none; }
+.league-rules-toggle {
+  margin-left: auto;
+  color: var(--accent);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.league-rules-toggle::after { content: ' ▾'; }
+.league-rules[open] .league-rules-toggle::after { content: ' ▴'; }
+.league-rules dl {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 4px 14px 14px;
+  border-top: 1px solid var(--border);
+}
+.league-rules dl div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding-top: 8px;
+}
+.league-rules dt { color: var(--text-muted); font-size: 0.9rem; }
+.league-rules dd { margin: 0; font-weight: 600; font-variant-numeric: tabular-nums; text-align: right; }
 
 .avatar {
   display: inline-grid;
