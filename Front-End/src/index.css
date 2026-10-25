@@ -903,6 +903,34 @@ ol {
   gap: 10px;
   padding-bottom: calc(env(safe-area-inset-bottom) + 24px);
 }
+/* While aiming, a pinch zooms the camera instead of the page. */
+.snipe-screen.aiming { touch-action: none; }
+.camera video { transition: transform 0.12s ease-out; }
+/* Zoom presets, like a phone camera's. */
+.zoom-control {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 999px;
+  background: rgb(0 0 0 / 0.45);
+}
+.zoom-step {
+  min-width: 40px;
+  height: 40px;
+  padding: 0 8px;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: #fff;
+  font-size: 0.8rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+.zoom-step.active {
+  background: rgb(255 255 255 / 0.9);
+  color: #000;
+}
 .snipe-bottom .motion-trigger {
   position: static;
   width: 100%;

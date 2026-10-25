@@ -14,18 +14,18 @@ const isAndroid = /Android/i.test(navigator.userAgent)
 // One render per shot, crosshair and gunshot sound, shared by every screen that offers the download.
 const rendered = new WeakMap<Blob, Map<string, Promise<Blob>>>()
 
-async function render(clip: Blob, shotAt: number, crosshairSvg: string, soundId: string) {
+async function render(clip: Blob, shotAt: number, crosshairSvg: string, soundId: string, zoom: number) {
   const ctx = gameAudio()
   const sound = ctx ? await shotSoundBuffer(soundId).catch(() => null) : null
-  return renderKillCam(clip, shotAt, crosshairSvg, ctx && sound ? { ctx, sound } : null)
+  return renderKillCam(clip, shotAt, crosshairSvg, ctx && sound ? { ctx, sound } : null, zoom)
 }
 
-function killCamVideo(clip: Blob, shotAt: number, crosshairSvg: string, soundId: string, key: string) {
+function killCamVideo(clip: Blob, shotAt: number, crosshairSvg: string, soundId: string, zoom: number, key: string) {
   const byChoice = rendered.get(clip) ?? new Map<string, Promise<Blob>>()
   rendered.set(clip, byChoice)
   if (!byChoice.has(key)) {
     // If the browser can't render it, fall back to the plain recording.
-    byChoice.set(key, render(clip, shotAt, crosshairSvg, soundId).catch(() => clip))
+    byChoice.set(key, render(clip, shotAt, crosshairSvg, soundId, zoom).catch(() => clip))
   }
   return byChoice.get(key)!
 }
@@ -34,11 +34,13 @@ function killCamVideo(clip: Blob, shotAt: number, crosshairSvg: string, soundId:
  * Save the kill cam (crosshair, slow motion and gunshot sound included) to the phone's camera
  * roll (or download it on a computer), or send it through the share sheet. Rendering starts as
  * soon as this shows, because phones only open the share sheet straight after a tap.
- * `look` overrides the player's crosshair and sound (last place's forced look).
+ * `look` overrides the player's crosshair and sound (last place's forced look). `zoom` is the
+ * shot's digital zoom, which the saved video is cropped to.
  */
-export function KillCamActions({ clip, shotAt, look }: {
+export function KillCamActions({ clip, shotAt, zoom = 1, look }: {
   clip: Blob
   shotAt: number
+  zoom?: number
   look?: { style: string; color: string; sound: string }
 }) {
   const [chosen] = useCrosshair()
@@ -56,11 +58,11 @@ export function KillCamActions({ clip, shotAt, look }: {
     const svg = svgHolder.current?.innerHTML.replace('<svg', '<svg xmlns="http://www.w3.org/2000/svg"')
     if (!svg) return
     let cancelled = false
-    void killCamVideo(clip, shotAt, svg, sound.shot, key).then((video) => !cancelled && setResult({ key, clip, video }))
+    void killCamVideo(clip, shotAt, svg, sound.shot, zoom, key).then((video) => !cancelled && setResult({ key, clip, video }))
     return () => {
       cancelled = true
     }
-  }, [clip, shotAt, key, sound.shot])
+  }, [clip, shotAt, key, sound.shot, zoom])
 
   const video = !canRenderKillCam() ? clip : result?.key === key && result.clip === clip ? result.video : null
 

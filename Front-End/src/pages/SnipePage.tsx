@@ -4,6 +4,8 @@ import { fireShot, getLeaderboard, getMyLeagues, submitSnipe } from '../api'
 import { getCurrentUser } from '../api'
 import { MotionTrigger } from '../camera/MotionTrigger'
 import { CameraView, type CameraHandle, type Shot } from '../camera/CameraView'
+import { ZoomControl } from '../camera/ZoomControl'
+import { usePinchZoom } from '../camera/usePinchZoom'
 import { ShotReview } from '../camera/KillCam'
 import { KillCamActions } from '../camera/KillCamActions'
 import { preloadFart, bang, playHit, playReload, SHOT_SOUNDS, useShotSound } from '../camera/feedback'
@@ -65,6 +67,8 @@ export function SnipePage() {
   )
 
   const [started, setStarted] = useState(false)
+  // Zoom in on far-away targets (also gives hit detection more pixels of them).
+  const [zoom, setZoom] = useState(1)
   const [shot, setShot] = useState<Shot | null>(null)
   // Was the crosshair on a person? Worked out on the device right after the shot.
   const [check, setCheck] = useState<PersonCheck | 'checking' | 'failed' | null>(null)
@@ -225,9 +229,11 @@ export function SnipePage() {
     setStarted(false)
   }
 
+  const pinch = usePinchZoom(zoom, setZoom, !shot)
+
   return (
-    <div className="snipe-screen">
-      <CameraView ref={cameraRef} onReady={setCameraReady} />
+    <div className={shot ? 'snipe-screen' : 'snipe-screen aiming'} {...pinch}>
+      <CameraView ref={cameraRef} onReady={setCameraReady} zoom={zoom} />
       {(leagues.error || board.error || me.error) && <p className="snipe-error" role="alert">{leagues.error || board.error || me.error}</p>}
       {shot && <ShotReview shot={shot} check={check} look={look} />}
       {flash && <div className="snipe-flash" />}
@@ -293,6 +299,7 @@ export function SnipePage() {
           </div>
           {error && <p className="snipe-error" role="alert">{error}</p>}
           <div className="snipe-bottom">
+            <ZoomControl zoom={zoom} onChange={setZoom} />
             {rim === 'easy-target' && (
               <p className="snipe-notice">
                 You're in last place: cracked crosshair and fart sound until you climb out.
@@ -329,7 +336,7 @@ export function SnipePage() {
             </button>
           </div>
           <p className="muted small">Immunity timers are paused at the moment you fired.</p>
-          {shot.clip && <KillCamActions clip={shot.clip} shotAt={shot.shotAt} look={look} />}
+          {shot.clip && <KillCamActions clip={shot.clip} shotAt={shot.shotAt} zoom={shot.zoom} look={look} />}
           {missed && (
             <p className="muted">
               Nobody was in your crosshair. Think you got someone? Pick who and tick what it was: it goes to the
@@ -417,7 +424,7 @@ export function SnipePage() {
               </p>
             )}
           </>}
-          {shot?.clip && <KillCamActions clip={shot.clip} shotAt={shot.shotAt} look={look} />}
+          {shot?.clip && <KillCamActions clip={shot.clip} shotAt={shot.shotAt} zoom={shot.zoom} look={look} />}
           <div className="button-row">
             <Link to={`/leagues/${league.id}`} className="button">
               Leaderboard
