@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom'
 import { challengeSnipe, getFeed, getLeaderboard, getLeague, removeMember, updateLeagueRules, voteOnChallenge } from '../api'
 import { getCurrentUser } from '../api'
 import { Avatar } from '../components/Avatar'
+import { SnipeImage } from '../components/SnipeImage'
 import { rimFor } from '../rims'
 import { CooldownBadge } from '../components/CooldownBadge'
 import { Crosshair } from '../components/Crosshair'
@@ -36,7 +37,9 @@ export function LeaguePage() {
   const { reload: reloadFeed } = feed
   useEffect(() => {
     if (!voting) return
-    const id = setInterval(() => { reloadBoard(); reloadFeed() }, 5000)
+    const id = setInterval(() => {
+      if (document.visibilityState === 'visible') { reloadBoard(); reloadFeed() }
+    }, 5000)
     return () => clearInterval(id)
   }, [voting, reloadBoard, reloadFeed])
 
@@ -298,7 +301,7 @@ function SnipePhoto({ src, crosshair }: { src: string; crosshair?: string | null
   const [style, color] = crosshair?.split(':') ?? []
   return (
     <div className="feed-shot">
-      <img className="feed-photo" src={src} alt="Snipe proof" />
+      <SnipeImage src={src} />
       {style && color && (
         <span className="feed-crosshair" aria-hidden>
           <Crosshair size={48} style={style} color={color} />

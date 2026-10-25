@@ -4,14 +4,18 @@ Features adjustable league settings, bounty rotations, 1st-place and headshot bo
 challenges settled by league vote.
 """
 
+import base64
+import binascii
 import secrets
 from datetime import datetime, timedelta
 from typing import Annotated, Literal, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, Field as InputField
 from sqlmodel import Session, not_, or_, select
-from sqlalchemy.orm import load_only
+from sqlalchemy import case
+from sqlalchemy.orm import defer, load_only
 
 router = APIRouter(prefix="/api")
 
@@ -326,7 +330,7 @@ def counts_as_headshot(hit: LeagueSnipe, challenges: list[Challenge]) -> bool:
 
 
 def snipe_json(hit: LeagueSnipe, session: Session, points: int = 0, viewer_id: Optional[int] = None,
-               *, challenges=None, needed=None, votes=None):
+               *, challenges=None, needed=None, votes=None, photo_present=None, external_photo=None):
     if challenges is None:
         challenges = session.exec(select(Challenge).where(Challenge.snipe_id == hit.id).order_by(Challenge.id)).all()
     if needed is None:
@@ -337,12 +341,16 @@ def snipe_json(hit: LeagueSnipe, session: Session, points: int = 0, viewer_id: O
               else "challenged" if any(c.status == "pending" for c in challenges)
               else "missed" if hit.missed and "hit" not in passed else "valid")
 
+    if photo_present is None:
+        photo_present = bool(hit.photo_url)
+        external_photo = hit.photo_url if hit.photo_url and hit.photo_url.startswith("https://") else None
+
     return dict(
         id=str(hit.id),
         leagueId=str(hit.league_id),
         sniperId=str(hit.shooter_id),
         targetId=str(hit.target_id),
-        photoUrl=hit.photo_url,
+        photoUrl=(external_photo or f"/api/leagues/{hit.league_id}/snipes/{hit.id}/photo") if photo_present else None,
         crosshair=hit.crosshair,
         points=points,
         status=status,
@@ -527,13 +535,17 @@ def feed(league_id: int, session: SessionDep, player: PlayerDep):
     league = require_league(league_id, player, session)
     scores, hit_pts = compute_league_scores_and_points(league, session, persist=False)
 
-    hits = session.exec(
-        select(LeagueSnipe)
+    # Return only photo presence; image bytes are fetched separately and cached.
+    hit_rows = session.exec(
+        select(LeagueSnipe, LeagueSnipe.photo_url.is_not(None),
+               case((LeagueSnipe.photo_url.startswith("https://"), LeagueSnipe.photo_url), else_=None))
+        .options(defer(LeagueSnipe.photo_url))
         .where(LeagueSnipe.league_id == league_id)
         .order_by(LeagueSnipe.created_at.desc(), LeagueSnipe.id.desc())
         .limit(100)
     ).all()
 
+    hits = [hit for hit, _, _ in hit_rows]
     if not hits:
         return []
     challenges = session.exec(select(Challenge).where(
@@ -550,9 +562,38 @@ def feed(league_id: int, session: SessionDep, player: PlayerDep):
     member_ids = set(session.exec(select(LeagueMember.player_id).where(
         LeagueMember.league_id == league_id)).all()) if challenges else set()
     return [snipe_json(hit, session, hit_pts.get(hit.id, 0), player.id,
-                       challenges=by_hit.get(hit.id, []), votes=votes,
+                       challenges=by_hit.get(hit.id, []), votes=votes, photo_present=has_photo,
+                       external_photo=external_photo,
                        needed=votes_needed(league, len(member_ids - {hit.shooter_id, hit.target_id})))
-            for hit in hits]
+            for hit, has_photo, external_photo in hit_rows]
+
+
+@router.get("/leagues/{league_id}/snipes/{snipe_id}/photo")
+def snipe_photo(league_id: int, snipe_id: int, request: Request, session: SessionDep, player: PlayerDep):
+    require_league(league_id, player, session)
+    # Snipe photos cannot be edited. Revalidation needs no image read from the database.
+    exists = session.exec(select(LeagueSnipe.id).where(
+        LeagueSnipe.id == snipe_id, LeagueSnipe.league_id == league_id,
+        LeagueSnipe.photo_url.is_not(None))).first()
+    if exists is None:
+        raise HTTPException(404, "No snipe photo.")
+    etag = f'"snipe-photo-{league_id}-{snipe_id}"'
+    headers = {"Cache-Control": "private, max-age=86400", "ETag": etag, "Vary": "Authorization",
+               "X-Content-Type-Options": "nosniff"}
+    if request.headers.get("if-none-match") == etag:
+        return Response(status_code=304, headers=headers)
+    photo = session.exec(select(LeagueSnipe.photo_url).where(LeagueSnipe.id == snipe_id)).one()
+    if photo.startswith("https://"):
+        return RedirectResponse(photo, headers=headers)
+    header, separator, payload = photo.partition(",")
+    media_type = header.removeprefix("data:").removesuffix(";base64")
+    if not separator or not header.endswith(";base64") or media_type not in ("image/jpeg", "image/png", "image/webp", "image/gif"):
+        raise HTTPException(422, "Unsupported snipe photo.")
+    try:
+        image = base64.b64decode(payload, validate=True)
+    except (binascii.Error, ValueError):
+        raise HTTPException(422, "The snipe photo could not be read.") from None
+    return Response(image, media_type=media_type, headers=headers)
 
 
 @router.post("/leagues/{league_id}/snipes")
