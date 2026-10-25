@@ -16,7 +16,7 @@ export const CrosshairIcon = (p: SVGProps<SVGSVGElement>) => (
   <svg {...base} {...p}>
     <circle cx="12" cy="12" r="8" />
     <path d="M12 2v4M12 18v4M2 12h4M18 12h4" />
-    <circle cx="12" cy="12" r="1.5" fill="currentColor" />
+    <circle cx="12" cy="12" r="1.5" fill="red" />
   </svg>
 )
 

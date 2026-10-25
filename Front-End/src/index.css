@@ -1366,3 +1366,36 @@ button:focus-visible, a:focus-visible, summary:focus-visible { outline: 2px soli
 .install-tips-note { padding: 12px; background: var(--surface-2); border-radius: 10px; }
 .install-tips-help { display: flex; flex-wrap: wrap; gap: 8px 18px; font-size: .72rem; }
 .install-tips-help a { color: var(--text); text-decoration: underline; text-underline-offset: 3px; }
+
+/* Navigation: a soft red sniper icon and a marker for the current tab. */
+.tab { position: relative; }
+.tab-snipe-button svg { color: #f58b93; }
+.tab-snipe-button svg circle:last-of-type { fill: currentColor; }
+.tab.active::after {
+  content: '';
+  position: absolute;
+  bottom: 3px;
+  left: 50%;
+  width: 24px;
+  height: 3px;
+  border-radius: 999px;
+  background: #f58b93;
+  transform: translateX(-50%);
+}
+
+/* Selection uses the underline while each navigation icon keeps its color. */
+.tab.active > svg { color: var(--text-muted); }
+.tab.active { color: var(--text-muted); }
+
+/* Emphasize the central camera action without changing selection colors. */
+.tab-snipe-button {
+  width: 64px;
+  height: 64px;
+  margin-top: -28px;
+  border: 4px solid var(--bg);
+  border-radius: 50%;
+  background: #dc2638;
+  box-shadow: 0 5px 18px #dc263840;
+}
+.tab-snipe-button svg { color: #fff; }
+.tab-snipe { gap: 5px; }
