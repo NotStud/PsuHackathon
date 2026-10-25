@@ -3,6 +3,12 @@
 // The ring buffer is what lets us hand hit detection a sharp image: by the time the
 // trigger fires the phone is already mid-flick and the live frame is motion-blurred,
 // so we look back to the frame captured just before the flick started.
+//
+// Zoom uses the camera's own zoom where the browser offers it (most Android phones), and a
+// centered crop for the rest ("digital" zoom). Buffered frames are cropped from the
+// full-resolution video, so a far-away target keeps its real pixels for hit detection; the
+// preview and the recorded clip aren't cropped, so whoever shows them scales them by
+// `digitalZoom`.
 
 const MIME_TYPES = ['video/mp4', 'video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm'];
 
@@ -16,6 +22,20 @@ export class CameraRig {
     this.chunks = [];
     this.frames = [];        // [{ canvas, t }], oldest first
     this.capturing = false;
+    this.digitalZoom = 1;    // the part of `zoom` done by cropping, not by the camera
+  }
+
+  // Zoom to `level` (1 = none). Returns how much of it is digital.
+  setZoom(level) {
+    const track = this.stream?.getVideoTracks()[0];
+    const range = track?.getCapabilities?.().zoom;
+    let hardware = 1;
+    if (range && range.max > range.min) {
+      hardware = Math.min(Math.max(level, range.min, 1), range.max);
+      track.applyConstraints({ advanced: [{ zoom: hardware }] }).catch(() => {});
+    }
+    this.digitalZoom = Math.max(1, level / hardware);
+    return this.digitalZoom;
   }
 
   async start() {
@@ -108,10 +128,13 @@ export class CameraRig {
 
   _grab(canvas) {
     const { videoWidth: w, videoHeight: h } = this.video;
-    const scale = Math.min(1, this.frameWidth / w);
-    canvas.width = Math.round(w * scale);
-    canvas.height = Math.round(h * scale);
-    canvas.getContext('2d').drawImage(this.video, 0, 0, canvas.width, canvas.height);
+    // The centered part a digital zoom shows, at full resolution (shrunk to frameWidth at most).
+    const cropW = w / this.digitalZoom, cropH = h / this.digitalZoom;
+    const scale = Math.min(1, this.frameWidth / cropW);
+    canvas.width = Math.round(cropW * scale);
+    canvas.height = Math.round(cropH * scale);
+    canvas.getContext('2d').drawImage(this.video, (w - cropW) / 2, (h - cropH) / 2, cropW, cropH,
+      0, 0, canvas.width, canvas.height);
     return canvas;
   }
 }

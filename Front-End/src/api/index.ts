@@ -85,10 +85,13 @@ export const setAvatar = (avatarUrl: string | null) => request<User>('/me/avatar
 /** The target challenges to reverse a snipe; the shooter challenges to claim a headshot. */
 export const challengeSnipe = (leagueId: string, snipeId: string, reason: string) =>
   request<Snipe>(`/leagues/${leagueId}/snipes/${snipeId}/challenge`, { reason })
-/** Yes or no on a challenge; can be changed until the vote is settled. */
-export const voteOnChallenge = (leagueId: string, challengeId: string, approve: boolean) =>
-  request<Snipe>(`/leagues/${leagueId}/challenges/${challengeId}/vote`, { approve })
-/** requestId makes retries safe: sending the same shot twice records it once. */
+/** Vote yes on a challenge (there is no no vote). */
+export const voteOnChallenge = (leagueId: string, challengeId: string) =>
+  request<Snipe>(`/leagues/${leagueId}/challenges/${challengeId}/vote`, {})
+/**
+ * requestId makes retries safe: sending the same shot twice records it once. `missReason`
+ * sends a shot the app called a miss, challenged as a hit: it counts once someone votes yes.
+ */
 export async function submitSnipe(
   leagueId: string,
   targetId: string,
@@ -96,6 +99,7 @@ export async function submitSnipe(
   requestId?: string,
   crosshair?: string,
   headshot = false,
+  missReason?: string,
 ): Promise<Snipe> {
   // Camera object URLs only exist in this browser; persist the image bytes instead.
   if (photoUrl?.startsWith('blob:')) {
@@ -107,5 +111,8 @@ export async function submitSnipe(
       reader.readAsDataURL(blob)
     })
   }
-  return request<Snipe>(`/leagues/${leagueId}/snipes`, { targetId: Number(targetId), photoUrl, requestId, crosshair, headshot })
+  return request<Snipe>(`/leagues/${leagueId}/snipes`, {
+    targetId: Number(targetId), photoUrl, requestId, crosshair, headshot,
+    missed: missReason !== undefined, challengeReason: missReason,
+  })
 }

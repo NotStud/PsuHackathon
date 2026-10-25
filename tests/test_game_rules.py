@@ -52,10 +52,9 @@ class GameRulesTests(unittest.TestCase):
     def challenge(self, lid, snipe, player, reason='Missed'):
         return api.challenge_snipe(lid, int(snipe['id']), api.ChallengeInput(reason=reason), self.session, player)
 
-    def vote(self, lid, challenged, voter, approve=True, minutes=0, kind=None):
+    def vote(self, lid, challenged, voter, minutes=0, kind=None):
         challenge = next(c for c in challenged['challenges'] if kind in (None, c['kind']))
-        return self.at(minutes, api.vote_on_challenge, lid, int(challenge['id']), api.VoteInput(approve=approve),
-                       self.session, voter)
+        return self.at(minutes, api.vote_on_challenge, lid, int(challenge['id']), self.session, voter)
 
     def board(self, lid, minutes):
         rows = self.at(minutes, api.leaderboard, lid, self.session, self.players[0])
@@ -122,7 +121,7 @@ class GameRulesTests(unittest.TestCase):
         passed = self.vote(lid, challenged, carol)
         self.assertEqual(passed['status'], 'reversed')
         self.assertEqual(passed['challenges'][0]['status'], 'approved')
-        self.assertEqual(passed['challenges'][0]['myVote'], 'yes')
+        self.assertTrue(passed['challenges'][0]['voted'])
         board = self.board(lid, 1)
         self.assertEqual(board['Alice']['points'], 0)  # back to before the snipe
         self.assertEqual(board['Bob']['points'], 0)
@@ -147,40 +146,33 @@ class GameRulesTests(unittest.TestCase):
         self.assertEqual(self.vote(lid, challenged, dave)['status'], 'challenged')
         self.assertEqual(self.vote(lid, challenged, erin)['status'], 'reversed')
 
-    def test_one_no_vote_rejects(self):
+    def test_without_a_yes_vote_the_snipe_stands(self):
         alice, bob, carol, dave = self.players
         lid = self.league(self.players, pointsPerSnipe=10)
-        hit = self.snipe(lid, alice, bob, 0)
-        challenged = self.challenge(lid, hit, bob)
-        result = self.vote(lid, challenged, carol, approve=False)  # one vote decides it either way
-        self.assertEqual(result['status'], 'valid')
-        self.assertEqual(result['challenges'][0]['status'], 'rejected')
-        self.assertEqual(self.board(lid, 1)['Alice']['points'], 10)
+        challenged = self.challenge(lid, self.snipe(lid, alice, bob, 0), bob)
+        self.assertEqual(challenged['status'], 'challenged')
+        self.assertEqual(challenged['challenges'][0]['yesVotes'], 0)
+        self.assertFalse(challenged['challenges'][0]['voted'])
+        board = self.board(lid, 60)  # nobody votes, however long it's been
+        self.assertEqual((board['Alice']['points'], board['Bob']['points']), (10, -1))
+
+    def test_voting_twice_counts_once(self):
+        alice, bob, carol, dave = self.players
+        lid = self.league(self.players, challengeVotes=2)
+        challenged = self.challenge(lid, self.snipe(lid, alice, bob, 0), bob)
+        self.vote(lid, challenged, carol)
+        again = self.vote(lid, challenged, carol)
+        self.assertEqual(again['challenges'][0]['yesVotes'], 1)
+        self.assertEqual(again['status'], 'challenged')
+
+    def test_no_more_votes_once_passed(self):
+        alice, bob, carol, dave = self.players
+        lid = self.league(self.players)
+        challenged = self.challenge(lid, self.snipe(lid, alice, bob, 0), bob)
+        self.vote(lid, challenged, carol)
         with self.assertRaises(HTTPException) as closed:
-            self.vote(lid, challenged, dave, approve=True)
+            self.vote(lid, challenged, dave)
         self.assertEqual(closed.exception.status_code, 409)
-        with self.assertRaises(HTTPException) as again:
-            self.challenge(lid, hit, bob)
-        self.assertEqual(again.exception.status_code, 409)
-
-    def test_two_no_votes_reject_a_two_vote_challenge(self):
-        players = self.players + [self.signup('Erin')]
-        alice, bob, carol, dave, erin = players
-        lid = self.league(players, challengeVotes=2)
-        challenged = self.challenge(lid, self.snipe(lid, alice, bob, 0), bob)
-        self.assertEqual(self.vote(lid, challenged, carol, approve=False)['status'], 'challenged')
-        result = self.vote(lid, challenged, dave, approve=False)
-        self.assertEqual(result['challenges'][0]['status'], 'rejected')
-
-    def test_votes_can_change_while_open(self):
-        players = self.players + [self.signup('Erin')]
-        alice, bob, carol = players[:3]
-        lid = self.league(players, challengeVotes=2)  # so one vote doesn't settle it
-        challenged = self.challenge(lid, self.snipe(lid, alice, bob, 0), bob)
-        self.vote(lid, challenged, carol, approve=False)
-        changed = self.vote(lid, challenged, carol, approve=True)
-        self.assertEqual((changed['challenges'][0]['yesVotes'], changed['challenges'][0]['noVotes']), (1, 0))
-        self.assertEqual(changed['status'], 'challenged')
 
     def test_shooter_headshot_claim_adds_the_bonus_when_upheld(self):
         alice, bob, carol, dave = self.players
@@ -239,3 +231,46 @@ class GameRulesTests(unittest.TestCase):
         challenged = self.challenge(lid, self.snipe(lid, alice, bob, 0), bob)
         self.assertEqual(challenged['challenges'][0]['votesNeeded'], 1)  # Carol is the only one who can vote
         self.assertEqual(self.vote(lid, challenged, carol)['status'], 'reversed')
+
+    def miss(self, lid, shooter, target, minutes, reason='The detector missed him'):
+        return self.at(minutes, api.submit_snipe, lid,
+                       api.SnipeInput(targetId=target.id, missed=True, challengeReason=reason), self.session, shooter)
+
+    def test_a_challenged_miss_counts_only_after_a_yes_vote(self):
+        alice, bob, carol, dave = self.players
+        lid = self.league(self.players, pointsPerSnipe=10)
+        sent = self.miss(lid, alice, bob, 0)
+        self.assertTrue(sent['missed'])
+        self.assertEqual(sent['status'], 'challenged')
+        self.assertEqual(sent['points'], 0)
+        self.assertEqual([(c['kind'], c['challengerId'], c['reason']) for c in sent['challenges']],
+                         [('hit', str(alice.id), 'The detector missed him')])
+        board = self.board(lid, 1)
+        self.assertEqual((board['Alice']['points'], board['Bob']['points']), (0, 0))
+        self.assertEqual((board['Alice']['snipes'], board['Bob']['timesSniped']), (0, 0))
+        self.assertIsNone(board['Bob']['cooldownUntil'])  # a miss doesn't make Bob immune
+        counted = self.vote(lid, sent, carol, minutes=2)
+        self.assertEqual(counted['status'], 'valid')
+        self.assertEqual(counted['points'], 10)
+        board = self.board(lid, 3)
+        self.assertEqual((board['Alice']['points'], board['Bob']['points']), (10, -1))
+        self.assertEqual(board['Bob']['cooldownUntil'], '2026-10-24T12:15:00Z')  # immune from when it was fired
+
+    def test_a_miss_needs_a_reason(self):
+        alice, bob = self.players[:2]
+        lid = self.league([alice, bob])
+        with self.assertRaises(HTTPException) as error:
+            self.miss(lid, alice, bob, 0, reason='  ')
+        self.assertEqual(error.exception.status_code, 422)
+
+    def test_an_uncounted_miss_cannot_be_reversed_or_claimed_as_a_headshot(self):
+        alice, bob, carol, dave = self.players
+        lid = self.league(self.players)
+        sent = self.miss(lid, alice, bob, 0)
+        for player in (bob, alice):
+            with self.assertRaises(HTTPException) as error:
+                self.challenge(lid, sent, player)
+            self.assertEqual(error.exception.status_code, 409)
+        self.vote(lid, sent, carol)
+        reversal = self.challenge(lid, sent, bob)  # once it counts, Bob can challenge it like any hit
+        self.assertEqual(reversal['status'], 'challenged')

@@ -63,12 +63,14 @@ function loadSvg(svg: string) {
 /**
  * `crosshairSvg` is the crosshair's SVG markup (any size; it is scaled to the video).
  * With `gunshot`, the video gets an audio track with the gunshot at the moment of the shot.
+ * `zoom` crops to the center like the shot's digital zoom did (1 = the whole frame).
  */
 export async function renderKillCam(
   clip: Blob,
   shotAt: number,
   crosshairSvg: string,
   gunshot: Gunshot | null = null,
+  zoom = 1,
 ): Promise<Blob> {
   const crosshair = await loadSvg(crosshairSvg)
   // Sound can only be recorded while the audio context runs (it needs an earlier tap on iOS).
@@ -108,8 +110,10 @@ export async function renderKillCam(
     const { width: w, height: h } = canvas
     const size = Math.round(Math.min(w, h) * 0.18)
 
+    const cropW = video.videoWidth / zoom
+    const cropH = video.videoHeight / zoom
     const draw = () => {
-      ctx.drawImage(video, 0, 0, w, h)
+      ctx.drawImage(video, (video.videoWidth - cropW) / 2, (video.videoHeight - cropH) / 2, cropW, cropH, 0, 0, w, h)
       // Hit marker, in video time after the shot: the crosshair pops, the screen flashes.
       const since = video.currentTime - hitAt
       const pop = since >= 0 && since < 0.1 ? 1 + 1.2 * (1 - since / 0.1) : 1

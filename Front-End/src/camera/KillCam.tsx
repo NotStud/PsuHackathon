@@ -32,7 +32,9 @@ export function ShotReview({ shot, check, look }: {
     <div className="shot-review">
       {shot.clip && (
         <div className="shot-panel">
-          <video ref={videoRef} muted playsInline />
+          {/* The clip isn't cropped to a digital zoom, so scale it to match the photo. */}
+          <video ref={videoRef} muted playsInline
+            style={shot.zoom > 1 ? { transform: `scale(${shot.zoom})` } : undefined} />
           {/* Re-keying restarts the hit-marker animation each loop. */}
           <div key={pop} className={pop ? 'shot-crosshair pop' : 'shot-crosshair'} aria-hidden>
             <Crosshair size={56} style={look?.style} color={look?.color} />

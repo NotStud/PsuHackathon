@@ -4,6 +4,8 @@ import { fireShot, getLeaderboard, getMyLeagues, submitSnipe } from '../api'
 import { getCurrentUser } from '../api'
 import { MotionTrigger } from '../camera/MotionTrigger'
 import { CameraView, type CameraHandle, type Shot } from '../camera/CameraView'
+import { ZoomControl } from '../camera/ZoomControl'
+import { usePinchZoom } from '../camera/usePinchZoom'
 import { ShotReview } from '../camera/KillCam'
 import { KillCamActions } from '../camera/KillCamActions'
 import { preloadFart, bang, playHit, playReload, SHOT_SOUNDS, useShotSound } from '../camera/feedback'
@@ -65,6 +67,8 @@ export function SnipePage() {
   )
 
   const [started, setStarted] = useState(false)
+  // Zoom in on far-away targets (also gives hit detection more pixels of them).
+  const [zoom, setZoom] = useState(1)
   const [shot, setShot] = useState<Shot | null>(null)
   // Was the crosshair on a person? Worked out on the device right after the shot.
   const [check, setCheck] = useState<PersonCheck | 'checking' | 'failed' | null>(null)
@@ -81,7 +85,9 @@ export function SnipePage() {
   const [shotReload, setShotReload] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [done, setDone] = useState<{ member: Member; points: number } | null>(null)
+  // A miss can still be sent, as a challenge that it was really a hit.
+  const [missReason, setMissReason] = useState('')
+  const [done, setDone] = useState<{ member: Member; points: number; challenged?: boolean } | null>(null)
 
   const now = useNow()
   // Immunity timers pause at the moment of the shot while you pick who you hit.
@@ -106,7 +112,7 @@ export function SnipePage() {
       .sort((a, b) => Date.parse(b) - Date.parse(a))[0] ?? null
 
   const missed = typeof check === 'object' && check !== null && !check.hit
-  const canSend = check !== 'checking' && !missed
+  const canSend = check !== 'checking' && (!missed || Boolean(missReason.trim()))
 
   const canShoot =
     cameraReady && Boolean(league) && !board.loading && !board.error && Boolean(me.data) && !shot && !reloadUntil
@@ -167,7 +173,12 @@ export function SnipePage() {
       const snipe = await submitSnipe(
         league.id, target.user.id, shot.photo, requestId ?? undefined, `${(look ?? crosshair).style}:${(look ?? crosshair).color}`,
         typeof check === 'object' && check !== null && check.headshot,
+        missed ? missReason.trim() : undefined,
       )
+      if (missed) {
+        setDone({ member: target, points: 0, challenged: true })
+        return
+      }
       navigator.vibrate?.([30, 50, 30])
       playHit()
       setDone({ member: target, points: snipe.points })
@@ -185,6 +196,7 @@ export function SnipePage() {
     setRequestId(null)
     setFiredAt(null)
     setTargetId(null)
+    setMissReason('')
     setError(null)
     setDone(null)
     board.reload()
@@ -204,9 +216,11 @@ export function SnipePage() {
     setStarted(false)
   }
 
+  const pinch = usePinchZoom(zoom, setZoom, !shot)
+
   return (
-    <div className="snipe-screen">
-      <CameraView ref={cameraRef} onReady={setCameraReady} />
+    <div className={shot ? 'snipe-screen' : 'snipe-screen aiming'} {...pinch}>
+      <CameraView ref={cameraRef} onReady={setCameraReady} zoom={zoom} />
       {(leagues.error || board.error || me.error) && <p className="snipe-error" role="alert">{leagues.error || board.error || me.error}</p>}
       {shot && <ShotReview shot={shot} check={check} look={look} />}
       {flash && <div className="snipe-flash" />}
@@ -272,6 +286,7 @@ export function SnipePage() {
           </div>
           {error && <p className="snipe-error" role="alert">{error}</p>}
           <div className="snipe-bottom">
+            <ZoomControl zoom={zoom} onChange={setZoom} />
             {rim === 'easy-target' && (
               <p className="snipe-notice">
                 You're in last place: cracked crosshair and fart sound until you climb out.
@@ -308,10 +323,14 @@ export function SnipePage() {
             </button>
           </div>
           <p className="muted small">Immunity timers are paused at the moment you fired.</p>
-          {shot.clip && <KillCamActions clip={shot.clip} shotAt={shot.shotAt} look={look} />}
-          {missed && <p className="muted">Nobody was in your crosshair, so this shot can't be sent. Go back and try again.</p>}
+          {shot.clip && <KillCamActions clip={shot.clip} shotAt={shot.shotAt} zoom={shot.zoom} look={look} />}
+          {missed && (
+            <p className="muted">
+              Nobody was in your crosshair. Think you got someone? Pick who and say why: it goes to the league as a
+              challenge, and counts as a hit if someone votes yes.
+            </p>
+          )}
           {check === 'failed' && <p className="muted small">Couldn't check this shot automatically, so it's up to you.</p>}
-          {!missed && <>
           {board.loading && !board.data && <p className="muted">Loading players…</p>}
           {!board.loading && !board.error && targets.length === 0 && <p className="muted">No other players yet. Share the league code to invite friends.</p>}
           <ul className="target-grid">
@@ -331,15 +350,22 @@ export function SnipePage() {
               </li>
             ))}
           </ul>
+          {missed && (
+            <input className="miss-reason" value={missReason} onChange={(e) => setMissReason(e.target.value)}
+              placeholder="Why should it count as a hit?" maxLength={500} aria-label="Why should it count as a hit?" />
+          )}
           {error && <p className="error">{error}</p>}
           <button
             className="button button-primary button-block button-large"
             disabled={!target || submitting || !canSend}
             onClick={confirm}
           >
-            {submitting ? 'Sending…' : check === 'checking' ? 'Checking your shot…' : target ? `Send: snipe ${target.user.displayName}` : 'Tap who you got'}
+            {submitting ? 'Sending…'
+              : check === 'checking' ? 'Checking your shot…'
+              : !target ? 'Tap who you got'
+              : missed ? (missReason.trim() ? `Challenge & send: ${target.user.displayName}` : 'Say why it should count')
+              : `Send: snipe ${target.user.displayName}`}
           </button>
-          </>}
         </div>
       )}
 
@@ -348,12 +374,20 @@ export function SnipePage() {
           <div className="success-icon">
             <CrosshairIcon width={56} height={56} />
           </div>
-          <h1>{typeof check === 'object' && check?.headshot ? 'Headshot!' : 'Sniped!'}</h1>
-          <p>
-            <strong>{done.member.user.displayName}</strong> · +{done.points} points
-          </p>
-          <p className="small">They're safe for the next {league.cooldownMinutes} minutes.</p>
-          {shot?.clip && <KillCamActions clip={shot.clip} shotAt={shot.shotAt} look={look} />}
+          {done.challenged ? <>
+            <h1>Challenge sent</h1>
+            <p>
+              Your miss on <strong>{done.member.user.displayName}</strong> is in Recent snipes. If someone votes yes,
+              it counts as a hit and you get the points.
+            </p>
+          </> : <>
+            <h1>{typeof check === 'object' && check?.headshot ? 'Headshot!' : 'Sniped!'}</h1>
+            <p>
+              <strong>{done.member.user.displayName}</strong> · +{done.points} points
+            </p>
+            <p className="small">They're safe for the next {league.cooldownMinutes} minutes.</p>
+          </>}
+          {shot?.clip && <KillCamActions clip={shot.clip} shotAt={shot.shotAt} zoom={shot.zoom} look={look} />}
           <div className="button-row">
             <Link to={`/leagues/${league.id}`} className="button">
               Leaderboard

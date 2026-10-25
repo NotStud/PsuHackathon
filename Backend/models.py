@@ -94,6 +94,7 @@ class LeagueSnipe(SQLModel, table=True):
     photo_url: str | None = None
     crosshair: str | None = None  # the shooter's crosshair as "style:color", drawn over the photo
     headshot: bool = False  # the app saw the crosshair on the target's head
+    missed: bool = False  # the app saw nobody in the crosshair; counts only once a "hit" challenge passes
     created_at: NaiveDatetime = Field(default_factory=utc_now)
 
 
@@ -130,7 +131,8 @@ class SnipeChallenge(SQLModel, table=True):
 
 
 # A challenge to a snipe, settled by the league's vote. The target can ask for it to be
-# reversed ("reverse"); the shooter can ask for it to count as a headshot ("headshot").
+# reversed ("reverse"); the shooter can ask for it to count as a headshot ("headshot"), or
+# for a missed shot to count as a hit ("hit", sent along with the miss).
 class Challenge(SQLModel, table=True):
     __tablename__ = "league_challenges"
 
@@ -139,12 +141,12 @@ class Challenge(SQLModel, table=True):
     kind: str = "reverse"
     challenger_id: int = Field(foreign_key="players.id")
     reason: str
-    status: str = "pending"  # pending, approved or rejected
+    status: str = "pending"  # pending or approved ("rejected" only from the old yes/no votes)
     created_at: NaiveDatetime = Field(default_factory=utc_now)
     resolved_at: NaiveDatetime | None = None
 
 
-# One vote per member on a challenge; it can be changed while voting is open.
+# One yes vote per member on a challenge. (approve is always true now; older rows may be no votes.)
 class ChallengeVote(SQLModel, table=True):
     __tablename__ = "challenge_votes"
 

@@ -8,6 +8,11 @@ export interface Shot {
   clip: Blob | null
   /** Seconds into the clip when the trigger fired. */
   shotAt: number
+  /**
+   * Digital zoom when it was taken: the photo is already cropped to it, but the clip isn't,
+   * so it's shown scaled up by this much.
+   */
+  zoom: number
 }
 
 export interface CameraHandle {
@@ -18,16 +23,19 @@ export interface CameraHandle {
   takeShot: (fired: { firedAt: number; steadyAt: number }) => Promise<Shot | null>
 }
 
-/** Live rear-camera preview built on trigger_camera's CameraRig. */
-export function CameraView({ ref, onReady }: {
+/** Live rear-camera preview built on trigger_camera's CameraRig, zoomed to `zoom` (1 = none). */
+export function CameraView({ ref, onReady, zoom = 1 }: {
   ref: Ref<CameraHandle>
   onReady?: (ready: boolean) => void
+  zoom?: number
 }) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const rigRef = useRef<CameraRig | null>(null)
   const recording = useRef(false)
   const [error, setError] = useState<string | null>(null)
   const [ready, setReady] = useState(false)
+  // The part of the zoom the camera can't do itself; the preview is scaled up by it.
+  const [digitalZoom, setDigitalZoom] = useState(1)
 
   useEffect(() => {
     const video = videoRef.current
@@ -49,6 +57,10 @@ export function CameraView({ ref, onReady }: {
   }, [])
 
   useEffect(() => { onReady?.(ready) }, [ready, onReady])
+  // Zoom once the camera is running (its zoom range is only known then).
+  useEffect(() => {
+    if (ready && rigRef.current) setDigitalZoom(rigRef.current.setZoom(zoom))
+  }, [ready, zoom])
 
   useImperativeHandle(ref, () => ({
     startRecording: () => {
@@ -69,14 +81,16 @@ export function CameraView({ ref, onReady }: {
       const photo = rig.frameAt(steadyAt).toDataURL('image/jpeg', 0.85)
       // Read the start time now: re-arming during the post-roll starts a new recording.
       const startedAt = rig.recordingStartedAt
+      const zoom = rig.digitalZoom
       const clip = await rig.stopRecording(800)
-      return { photo, clip, shotAt: (firedAt - startedAt) / 1000 }
+      return { photo, clip, shotAt: (firedAt - startedAt) / 1000, zoom }
     },
   }))
 
   return (
     <div className="camera">
-      <video ref={videoRef} autoPlay muted playsInline onPlaying={() => setReady(true)} />
+      <video ref={videoRef} autoPlay muted playsInline onPlaying={() => setReady(true)}
+        style={digitalZoom > 1 ? { transform: `scale(${digitalZoom})` } : undefined} />
       {!ready && <p className="camera-hint" role="status">{error ?? 'Opening camera…'}</p>}
     </div>
   )
