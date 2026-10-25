@@ -74,6 +74,9 @@ export const getFeed = (id: string) => request<Snipe[]>(`/leagues/${id}/feed`)
 export const joinLeague = (joinCode: string) => request<League>('/leagues/join', { joinCode })
 export const createLeague = (name: string, rules: LeagueRules = {}) =>
   request<League>('/leagues', { name, ...rules })
+/** League creator only: kick another player out of the league. */
+export const removeMember = (leagueId: string, userId: string) =>
+  request<League>(`/leagues/${leagueId}/members/${userId}/remove`, {})
 /** League creator only. */
 export const updateLeagueRules = (leagueId: string, rules: LeagueRules) =>
   request<League>(`/leagues/${leagueId}/rules`, rules)
