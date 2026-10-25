@@ -300,7 +300,7 @@ export function SnipePage() {
                 >
                   <Avatar user={m.user} size={48} rim={rimFor(m, board.data)} />
                   <span>{m.user.displayName}</span>
-                  <RuleBadges member={m} league={league} />
+                  <RuleBadges member={m} league={league} members={board.data} />
                   {m.cooldownUntil && <CooldownBadge until={m.cooldownUntil} frozenAt={firedAt ?? undefined} />}
                 </button>
               </li>

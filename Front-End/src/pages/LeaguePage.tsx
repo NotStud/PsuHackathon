@@ -179,7 +179,7 @@ function Leaderboard({
               {m.snipes} snipes · sniped {m.timesSniped}×
             </span>
             <span className="row-badges">
-              <RuleBadges member={m} league={league} />
+              <RuleBadges member={m} league={league} members={members} />
               {m.cooldownUntil && <CooldownBadge until={m.cooldownUntil} />}
               {m.shooterCooldownUntil && <CooldownBadge until={m.shooterCooldownUntil} kind="reloading" />}
             </span>

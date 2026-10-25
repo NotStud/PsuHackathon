@@ -13,6 +13,8 @@
   --cooldown-soft: #dbeafe;
   --king: #a16207;
   --king-soft: #fef3c7;
+  --easy-target: #8b5a2b;
+  --easy-target-soft: #f3e3d3;
   --error: #dc2626;
 
   --radius: 14px;
@@ -40,6 +42,8 @@
     --cooldown-soft: #172554;
     --king: #facc15;
     --king-soft: #3f2f05;
+    --easy-target: #d4a373;
+    --easy-target-soft: #3b2614;
     --error: #f87171;
   }
 }
@@ -736,6 +740,12 @@ ol {
   background: var(--king-soft);
   color: var(--king);
 }
+/* Easy target (last place): brown, like its avatar rim. */
+.badge-easy-target {
+  background: var(--easy-target-soft);
+  color: var(--easy-target);
+}
+.badge-easy-target .badge-l { font-weight: 900; }
 .badge-bounty {
   background: var(--accent-soft);
   color: var(--accent);
