@@ -28,6 +28,6 @@ Respond with `{"hit": true, "target": "name"}`, `{"hit": false}`, or `{"hit": nu
 
 - Watches gyro pitch rate: rotation about the axis that's horizontal and across the camera's view, worked out from gravity, so it's correct however the phone is held (including sideways with rotation lock on). Falls back to the screen orientation if there's no gravity reading. Everything else (side-to-side swing, twist) is "side".
 - Only up/down speed decides the shot (set `UP_ONLY = true` for up only). If the motion is mostly up/down (`|pitch| ≥ MAJORITY × side`, with `MAJORITY = 1.5`), strength is the up/down speed and any sideways part is ignored; if it's mostly sideways, strength is 0, so side-to-side and twisting never fire. The HUD meter shows this same strength, so a full bar always fires. If a phone reports upward as negative, flip `UP` to `-1` in `trigger.js`.
-- Fires whenever strength exceeds the threshold. The default is `DEFAULT_THRESHOLD` in `trigger.js` (40°/s), the only place it's set; the slider adjusts it from 20 to 360.
+- Fires whenever strength exceeds the threshold. The default is `DEFAULT_THRESHOLD` in `trigger.js` (70°/s), the only place it's set; the slider adjusts it from 20 to 360.
 - It tracks the last moment the phone was steady (<70°/s total) and uses the frame from then, so the photo isn't blurred by the flick.
 - Shooting is flick-only: there is no tap-to-fire, so it needs a phone with a gyro.
