@@ -16,7 +16,7 @@ const TINT = [34, 197, 94, 110]  // green, semi-transparent
 const HEAD_COLOR = '#facc15'
 
 export interface PersonCheck {
-  /** The pixel at the very center of the crosshair is on a person. */
+  /** The pixel at the very center of the crosshair is on a person (or it's a headshot). */
   hit: boolean
   /** A hit whose crosshair was inside someone's head. */
   headshot: boolean
@@ -75,6 +75,11 @@ interface Head { cx: number; cy: number; rx: number; ry: number; neckY?: number 
 
 /** How much the head ellipse is grown to take in hair. */
 const HAIR = 1.35
+/**
+ * Slack at the edge of a head, as a fraction of head size: a headshot needs the
+ * person outline within this distance of the crosshair (the outline cuts off hair).
+ */
+const HEAD_EDGE = 0.25
 
 /**
  * Head zone from pose landmarks (0 nose, 2/5 eyes, 7/8 ears, 11/12 shoulders),
@@ -163,15 +168,31 @@ export async function checkPerson(photo: string): Promise<PersonCheck> {
     const person = model.getLabels().indexOf('person')
     const { width: mw, height: mh } = mask
 
-    // Hit only if the single pixel at the very center of the crosshair is on a person.
-    const hit = labels[Math.floor(mh / 2) * mw + Math.floor(mw / 2)] === person
+    // Body: hit only if the single pixel at the very center of the crosshair is on a person.
+    const centerOnPerson = labels[Math.floor(mh / 2) * mw + Math.floor(mw / 2)] === person
 
-    // Headshot: the crosshair (photo center) inside any detected head. Without the
-    // pose model we just can't call headshots; hit / miss still works.
+    /** Is any person pixel within `r` mask pixels of the crosshair? */
+    const personWithin = (r: number) => {
+      for (let y = Math.max(0, Math.floor(mh / 2 - r)); y <= Math.min(mh - 1, Math.ceil(mh / 2 + r)); y++) {
+        for (let x = Math.max(0, Math.floor(mw / 2 - r)); x <= Math.min(mw - 1, Math.ceil(mw / 2 + r)); x++) {
+          if ((x - mw / 2) ** 2 + (y - mh / 2) ** 2 <= r * r && labels[y * mw + x] === person) return true
+        }
+      }
+      return false
+    }
+
+    // Headshot: the crosshair (photo center) inside a head zone (hair included, cut at
+    // the neck). The person outline is rough around hair, so for heads it's enough
+    // that the outline is close by (within HEAD_EDGE of a head-width), not exactly
+    // under the crosshair. Without the pose model there are no headshots; hit / miss
+    // still works.
     const heads = posing ? findHeads(posing, img, crop, { x: left, y: top, w: side, h: side }) : []
     const aimX = img.width / 2, aimY = img.height / 2
-    const headshot = hit && heads.some((h) =>
-      ((aimX - h.cx) / h.rx) ** 2 + ((aimY - h.cy) / h.ry) ** 2 <= 1 && (h.neckY === undefined || aimY <= h.neckY))
+    const headshot = heads.some((h) =>
+      ((aimX - h.cx) / h.rx) ** 2 + ((aimY - h.cy) / h.ry) ** 2 <= 1 &&
+      (h.neckY === undefined || aimY <= h.neckY) &&
+      (centerOnPerson || personWithin((HEAD_EDGE * h.rx / HAIR) * (mw / side))))
+    const hit = centerOnPerson || headshot
 
     // Paint detected people (and heads) onto the photo so the player can see what counted.
     const tint = document.createElement('canvas')
