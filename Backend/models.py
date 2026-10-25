@@ -131,8 +131,9 @@ class SnipeChallenge(SQLModel, table=True):
 
 
 # A challenge to a snipe, settled by the league's vote. The target can ask for it to be
-# reversed ("reverse"); the shooter can ask for it to count as a headshot ("headshot"), or
-# for a missed shot to count as a hit ("hit", sent along with the miss).
+# reversed ("reverse") or for a headshot not to count ("no-headshot": the hit stands, the
+# bonus goes); the shooter can ask for it to count as a headshot ("headshot"), or for a
+# missed shot to count as a hit ("hit", sent along with the miss). The reason is optional.
 class Challenge(SQLModel, table=True):
     __tablename__ = "league_challenges"
 

@@ -81,10 +81,10 @@ export function SnipePage() {
   const [shotReload, setShotReload] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  // A shot can be sent with a challenge: a miss that was really a hit, or a headshot the app
-  // didn't see (with a miss, a headshot hit). The league votes on it.
-  const [claiming, setClaiming] = useState(false)  // a hit, sent with a headshot claim
-  const [claimHeadshot, setClaimHeadshot] = useState(false)  // a miss, claimed as a headshot
+  // A shot can be sent with a challenge the league votes on: a miss that was really a hit,
+  // and/or a headshot the app didn't see. The message is optional.
+  const [claimHit, setClaimHit] = useState(false)  // a miss
+  const [claimHeadshot, setClaimHeadshot] = useState(false)  // a miss or a hit
   const [reason, setReason] = useState('')
   const [done, setDone] = useState<{
     member: Member; points: number; challenged?: boolean; claimedHeadshot?: boolean
@@ -114,9 +114,9 @@ export function SnipePage() {
 
   const missed = typeof check === 'object' && check !== null && !check.hit
   const sawHeadshot = typeof check === 'object' && check !== null && check.headshot
-  // A miss is always sent as a challenge; a hit only if the shooter claims a headshot.
-  const challenging = missed || claiming
-  const canSend = check !== 'checking' && (!challenging || Boolean(reason.trim()))
+  // A miss can only be sent as a challenge that it was a hit; a hit can carry a headshot claim.
+  const challenging = missed ? claimHit : claimHeadshot
+  const canSend = check !== 'checking' && (!missed || claimHit)
 
   const canShoot =
     cameraReady && Boolean(league) && !board.loading && !board.error && Boolean(me.data) && !shot && !reloadUntil
@@ -178,7 +178,7 @@ export function SnipePage() {
         league.id, target.user.id, shot.photo, requestId ?? undefined, `${(look ?? crosshair).style}:${(look ?? crosshair).color}`,
         {
           headshot: sawHeadshot, missed,
-          claimHeadshot: missed ? claimHeadshot : claiming,
+          claimHeadshot,
           reason: challenging ? reason.trim() : undefined,
         },
       )
@@ -188,7 +188,7 @@ export function SnipePage() {
       }
       navigator.vibrate?.([30, 50, 30])
       playHit()
-      setDone({ member: target, points: snipe.points, claimedHeadshot: claiming })
+      setDone({ member: target, points: snipe.points, claimedHeadshot: claimHeadshot })
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     } finally {
@@ -203,7 +203,7 @@ export function SnipePage() {
     setRequestId(null)
     setFiredAt(null)
     setTargetId(null)
-    setClaiming(false)
+    setClaimHit(false)
     setClaimHeadshot(false)
     setReason('')
     setError(null)
@@ -332,8 +332,8 @@ export function SnipePage() {
           {shot.clip && <KillCamActions clip={shot.clip} shotAt={shot.shotAt} look={look} />}
           {missed && (
             <p className="muted">
-              Nobody was in your crosshair. Think you got someone? Pick who and say why: it goes to the league as a
-              challenge, and counts as a hit if someone votes yes.
+              Nobody was in your crosshair. Think you got someone? Pick who and tick what it was: it goes to the
+              league as a challenge, and counts if someone votes yes.
             </p>
           )}
           {check === 'failed' && <p className="muted small">Couldn't check this shot automatically, so it's up to you.</p>}
@@ -356,29 +356,25 @@ export function SnipePage() {
               </li>
             ))}
           </ul>
-          {/* A hit can be sent with a headshot claim, when the app didn't see one. */}
-          {!missed && !sawHeadshot && check !== 'checking' && !claiming && (
-            <button className="link-button small claim-toggle" onClick={() => setClaiming(true)}>
-              Challenge: it was a headshot
-            </button>
-          )}
-          {challenging && (
+          {/* Challenge it as you send it: a miss that was a hit, and/or a headshot the app didn't see. */}
+          {check !== 'checking' && (missed || !sawHeadshot) && (
             <div className="shot-claim">
-              {missed ? (
+              {missed && (
                 <label className="claim-check">
-                  <input type="checkbox" checked={claimHeadshot} onChange={(e) => setClaimHeadshot(e.target.checked)} />
-                  It was a headshot (+{league?.headshotBonusPoints ?? 0} if voted yes)
+                  <input type="checkbox" checked={claimHit}
+                    onChange={(e) => { setClaimHit(e.target.checked); if (!e.target.checked) setClaimHeadshot(false) }} />
+                  It was a hit
                 </label>
-              ) : (
-                <p className="small claim-note">
-                  Claiming a headshot: the hit counts now, and you get +{league?.headshotBonusPoints ?? 0} more if
-                  someone votes yes.{' '}
-                  <button className="link-button small" onClick={() => setClaiming(false)}>Cancel</button>
-                </p>
               )}
-              <input className="miss-reason" value={reason} onChange={(e) => setReason(e.target.value)}
-                placeholder={missed && !claimHeadshot ? 'Why should it count as a hit?' : 'Why was it a headshot?'}
-                maxLength={500} aria-label="Your reason" />
+              <label className="claim-check">
+                <input type="checkbox" checked={claimHeadshot}
+                  onChange={(e) => { setClaimHeadshot(e.target.checked); if (e.target.checked) setClaimHit(true) }} />
+                It was a headshot (+{league?.headshotBonusPoints ?? 0} if voted yes)
+              </label>
+              {challenging && (
+                <input className="miss-reason" value={reason} onChange={(e) => setReason(e.target.value)}
+                  placeholder="Add a message (optional)" maxLength={500} aria-label="Message (optional)" />
+              )}
             </div>
           )}
           {error && <p className="error">{error}</p>}
@@ -390,9 +386,9 @@ export function SnipePage() {
             {submitting ? 'Sending…'
               : check === 'checking' ? 'Checking your shot…'
               : !target ? 'Tap who you got'
-              : challenging && !reason.trim() ? (missed ? 'Say why it should count' : 'Say why it was a headshot')
+              : missed && !claimHit ? 'Tick "It was a hit" to send it'
               : missed ? `Challenge & send: ${target.user.displayName}`
-              : claiming ? `Send & claim headshot: ${target.user.displayName}`
+              : claimHeadshot ? `Send & claim headshot: ${target.user.displayName}`
               : `Send: snipe ${target.user.displayName}`}
           </button>
         </div>

@@ -286,7 +286,10 @@ function ChallengeControls({
   currentUserId?: string
   onChange: () => void
 }) {
-  const [writing, setWriting] = useState<Challenge['kind'] | null>(null)
+  // The challenge form: the target ticks no hit and/or no headshot; the shooter claims a headshot.
+  const [open, setOpen] = useState(false)
+  const [noHit, setNoHit] = useState(false)
+  const [noHeadshot, setNoHeadshot] = useState(false)
   const [reason, setReason] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -297,16 +300,22 @@ function ChallengeControls({
   const has = (kind: Challenge['kind']) => snipe.challenges.some((c) => c.kind === kind)
   // An uncounted miss can only be voted a hit; once it counts it can be challenged like any hit.
   const counts = !snipe.missed || snipe.challenges.some((c) => c.kind === 'hit' && c.status === 'approved')
-  const canReverse = counts && isTarget && snipe.status !== 'reversed' && !has('reverse')
-  const canClaimHeadshot = counts && isShooter && snipe.status !== 'reversed' && !snipe.headshot && !has('headshot')
+  const live = counts && snipe.status !== 'reversed'
+  const canSayNoHit = live && isTarget && !has('reverse')
+  const canSayNoHeadshot = live && isTarget && snipe.headshot && !has('no-headshot')
+  const canClaimHeadshot = live && isShooter && !snipe.headshot && !has('headshot') && !has('no-headshot')
     && !snipe.challenges.some((c) => c.kind === 'hit' && c.claimsHeadshot)  // the miss claim already says headshot
+  // "No hit" covers "no headshot" too.
+  const kind: Challenge['kind'] | null = isShooter ? 'headshot' : noHit ? 'reverse' : noHeadshot ? 'no-headshot' : null
 
   async function run(action: () => Promise<unknown>) {
     setBusy(true)
     setError(null)
     try {
       await action()
-      setWriting(null)
+      setOpen(false)
+      setNoHit(false)
+      setNoHeadshot(false)
       setReason('')
       onChange()
     } catch (err) {
@@ -318,7 +327,7 @@ function ChallengeControls({
 
   function submitChallenge(e: FormEvent) {
     e.preventDefault()
-    void run(() => challengeSnipe(leagueId, snipe.id, reason.trim()))
+    if (kind) void run(() => challengeSnipe(leagueId, snipe.id, kind, reason.trim()))
   }
 
   return (
@@ -327,9 +336,11 @@ function ChallengeControls({
         <div key={c.id} className={`challenge challenge-${c.status}`}>
           <p className="small">
             <strong>{userById.get(c.challengerId)?.displayName ?? 'Someone'}</strong>
-            {c.kind === 'reverse' ? ' challenged this snipe'
+            {c.kind === 'reverse' ? ' says it was no hit'
+              : c.kind === 'no-headshot' ? ' says it was no headshot'
               : c.kind === 'headshot' ? ' says it was a headshot'
-              : c.claimsHeadshot ? ' says this miss was a headshot' : ' says this miss was a hit'}: “{c.reason}”
+              : c.claimsHeadshot ? ' says this miss was a headshot' : ' says this miss was a hit'}
+            {c.reason ? `: “${c.reason}”` : ''}
           </p>
           <p className="muted small">
             {c.status === 'pending' && <>
@@ -337,6 +348,7 @@ function ChallengeControls({
               {c.yesVotes} of {c.votesNeeded} yes vote{c.votesNeeded === 1 ? '' : 's'} · the snipe stands until then
             </>}
             {c.status === 'approved' && (c.kind === 'reverse' ? 'Passed: snipe reversed and points given back.'
+              : c.kind === 'no-headshot' ? 'Passed: not a headshot, bonus taken away (the hit still counts).'
               : c.kind === 'headshot' ? 'Passed: counted as a headshot, bonus added.'
               : c.claimsHeadshot ? 'Passed: counted as a headshot hit, points and bonus added.'
               : 'Passed: counted as a hit, points added.')}
@@ -354,7 +366,8 @@ function ChallengeControls({
               ) : (
                 <button className="button button-primary" disabled={busy}
                   onClick={() => void run(() => voteOnChallenge(leagueId, c.id))}>
-                  {busy ? 'Voting…' : c.kind === 'reverse' ? 'Yes, reverse it'
+                  {busy ? 'Voting…' : c.kind === 'reverse' ? 'Yes, no hit'
+                    : c.kind === 'no-headshot' ? 'Yes, no headshot'
                     : c.claimsHeadshot ? 'Yes, it was a headshot' : 'Yes, it was a hit'}
                 </button>
               )}
@@ -363,25 +376,41 @@ function ChallengeControls({
         </div>
       ))}
 
-      {!writing && (canReverse || canClaimHeadshot) && (
-        <button className="link-button small" onClick={() => setWriting(canReverse ? 'reverse' : 'headshot')}>
-          {canReverse ? 'Challenge this snipe' : 'Challenge: it was a headshot'}
+      {!open && (canSayNoHit || canSayNoHeadshot || canClaimHeadshot) && (
+        <button className="link-button small" onClick={() => setOpen(true)}>
+          {isShooter ? 'Challenge: it was a headshot' : 'Challenge this snipe'}
         </button>
       )}
-      {writing && (
+      {open && (
         <form className="challenge-form" onSubmit={submitChallenge}>
+          {isShooter ? (
+            <label className="claim-check">
+              <input type="checkbox" checked readOnly /> It was a headshot
+            </label>
+          ) : <>
+            {canSayNoHit && (
+              <label className="claim-check">
+                <input type="checkbox" checked={noHit} onChange={(e) => setNoHit(e.target.checked)} /> No hit
+              </label>
+            )}
+            {canSayNoHeadshot && (
+              <label className="claim-check">
+                <input type="checkbox" checked={noHit || noHeadshot} disabled={noHit}
+                  onChange={(e) => setNoHeadshot(e.target.checked)} /> No headshot (the hit still counts)
+              </label>
+            )}
+          </>}
           <input
             value={reason}
             onChange={(e) => setReason(e.target.value)}
-            placeholder={writing === 'reverse' ? "Why doesn't it count?" : 'Why was it a headshot?'}
+            placeholder="Add a message (optional)"
             maxLength={500}
-            required
-            autoFocus
+            aria-label="Message (optional)"
           />
-          <button className="button button-primary" disabled={busy || !reason.trim()}>
+          <button className="button button-primary" disabled={busy || !kind}>
             {busy ? 'Sending…' : 'Challenge'}
           </button>
-          <button type="button" className="button" onClick={() => setWriting(null)}>
+          <button type="button" className="button" onClick={() => setOpen(false)}>
             Cancel
           </button>
         </form>

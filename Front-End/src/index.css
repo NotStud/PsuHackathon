@@ -842,6 +842,9 @@ ol {
 .shot-claim { display: flex; flex-direction: column; gap: 6px; margin-top: 4px; }
 .claim-check { display: flex; align-items: center; gap: 8px; font-weight: 600; }
 .claim-check input { width: 20px; height: 20px; accent-color: var(--accent); }
+.challenge-form .claim-check { flex: 1 1 100%; justify-content: flex-start; }
+/* Not the text-box look the form gives its message input. */
+.challenge-form .claim-check input { flex: none; width: 20px; height: 20px; min-height: 0; padding: 0; }
 .claim-note { margin: 0; }
 .challenge-voters { margin: 0; color: var(--text-muted); }
 /* Snipe screen: why a miss should count, sent with it as a challenge. */
