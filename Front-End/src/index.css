@@ -841,10 +841,11 @@ ol {
 }
 
 /* ---------- Person check verdict on the hit photo ---------- */
+/* Top-right corner of the hit photo, just below the top bar (close button + league). */
 .shot-verdict {
   position: absolute;
   right: 10px;
-  bottom: 8px;
+  top: calc(env(safe-area-inset-top) + 76px);
   padding: 3px 10px;
   border-radius: 999px;
   background: rgb(0 0 0 / 0.6);
@@ -858,7 +859,7 @@ ol {
 .highlight-toggle {
   position: absolute;
   right: 10px;
-  bottom: 38px;
+  bottom: 34px;  /* a row above the HIT PHOTO label, so they don't collide on narrow phones */
   padding: 4px 10px;
   border: 1px solid rgb(255 255 255 / 0.5);
   border-radius: 999px;

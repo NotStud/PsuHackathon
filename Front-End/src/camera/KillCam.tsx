@@ -4,35 +4,17 @@ import { Crosshair } from '../components/Crosshair'
 import type { Shot } from './CameraView'
 import type { PersonCheck } from './personCheck'
 
-const HIGHLIGHT_KEY = 'snipe:highlightPeople'
-
-function loadHighlight() {
-  try {
-    return localStorage.getItem(HIGHLIGHT_KEY) === 'on'  // off unless the player turned it on
-  } catch {
-    return false
-  }
-}
-
-function saveHighlight(on: boolean) {
-  try {
-    localStorage.setItem(HIGHLIGHT_KEY, on ? 'on' : 'off')
-  } catch {
-    // Storage unavailable (private mode etc.); just don't remember.
-  }
-}
-
 /**
  * After a shot: the kill cam (auto-plays and loops, normal speed up to the shot,
  * then slow motion) beside the hit photo. Both are center-cropped like the live
  * view, so the crosshair sits where the shooter aimed. Once the person check is done,
- * the hit photo shows a HEADSHOT / HIT / MISS verdict, and detected people and heads highlighted (the
- * player can toggle the highlight; the choice is remembered on this device).
+ * the hit photo shows a HEADSHOT / HIT / MISS verdict in its top-right corner, and a
+ * button to highlight the detected people and heads (off at the start of every shot).
  */
 export function ShotReview({ shot, check }: { shot: Shot; check: PersonCheck | 'checking' | 'failed' | null }) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const [pop, setPop] = useState(0)
-  const [highlight, setHighlight] = useState(loadHighlight)
+  const [highlight, setHighlight] = useState(false)
   const result = typeof check === 'object' && check ? check : null
 
   useEffect(() => {
@@ -62,7 +44,7 @@ export function ShotReview({ shot, check }: { shot: Shot; check: PersonCheck | '
         <span className="shot-label">HIT PHOTO</span>
         {result && (
           <button className={highlight ? 'highlight-toggle on' : 'highlight-toggle'} aria-pressed={highlight}
-            onClick={() => { setHighlight(!highlight); saveHighlight(!highlight) }}>
+            onClick={() => setHighlight(!highlight)}>
             Highlight {highlight ? 'on' : 'off'}
           </button>
         )}
