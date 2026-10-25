@@ -29,7 +29,7 @@ export default function App() {
           <Route path="/profile" element={<ProfilePage />} />
         </Route>
         </Route>
-        <Route path="/" element={<Navigate to="/snipe" replace />} />
+        <Route path="/" element={<Navigate to="/leagues" replace />} />
         <Route path="*" element={<Navigate to="/login" replace />} />
       </Routes>
     </BrowserRouter>

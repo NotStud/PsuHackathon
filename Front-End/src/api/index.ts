@@ -68,6 +68,7 @@ export async function submitSnipe(
   targetId: string,
   photoUrl: string | null,
   requestId?: string,
+  crosshair?: string,
 ): Promise<Snipe> {
   // Camera object URLs only exist in this browser; persist the image bytes instead.
   if (photoUrl?.startsWith('blob:')) {
@@ -79,5 +80,5 @@ export async function submitSnipe(
       reader.readAsDataURL(blob)
     })
   }
-  return request<Snipe>(`/leagues/${leagueId}/snipes`, { targetId: Number(targetId), photoUrl, requestId })
+  return request<Snipe>(`/leagues/${leagueId}/snipes`, { targetId: Number(targetId), photoUrl, requestId, crosshair })
 }

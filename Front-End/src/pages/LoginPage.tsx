@@ -27,7 +27,7 @@ export function LoginPage() {
     try {
       if (signup) await signUp(name, email, password)
       else await signIn(email, password)
-      window.location.assign('/snipe')
+      window.location.assign('/leagues')
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     } finally { setBusy(false) }

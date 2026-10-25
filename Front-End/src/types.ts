@@ -68,6 +68,8 @@ export interface Snipe {
   targetId: string
   /** Object URL or remote URL of the photo proof. */
   photoUrl: string | null
+  /** The shooter's crosshair as "style:color", drawn over the photo; null for older snipes. */
+  crosshair?: string | null
   /** Points this snipe earned, including bonuses; 0 once reversed. */
   points: number
   /** 'challenged' while the target disputes it; 'reversed' once someone else approves. */

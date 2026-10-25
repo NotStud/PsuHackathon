@@ -1,10 +1,11 @@
 import { useState, type FormEvent } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { useParams } from 'react-router-dom'
 import { approveChallenge, challengeSnipe, getFeed, getLeaderboard, getLeague, updateLeagueRules } from '../api'
 import { getCurrentUser } from '../api'
 import { Avatar } from '../components/Avatar'
 import { CooldownBadge } from '../components/CooldownBadge'
-import { CrosshairIcon, TargetIcon } from '../components/Icons'
+import { Crosshair } from '../components/Crosshair'
+import { TargetIcon } from '../components/Icons'
 import { PageHeader } from '../components/PageHeader'
 import { RuleBadges } from '../components/RuleBadges'
 import { RulesFields } from '../components/RulesFields'
@@ -40,11 +41,6 @@ export function LeaguePage() {
         <RulesEditor league={league.data} onSaved={() => { league.reload(); board.reload() }} />
       )}
       {league.data && <BountyBanner league={league.data} members={board.data} />}
-
-      <Link to={`/snipe?league=${leagueId}`} className="button button-primary button-block">
-        <CrosshairIcon width={20} height={20} />
-        Snipe someone
-      </Link>
 
       <div className="segmented" role="tablist">
         <button role="tab" aria-selected={tab === 'leaderboard'} onClick={() => setTab('leaderboard')}>
@@ -227,12 +223,27 @@ function Feed({
               <span className="muted small"> · {timeAgo(s.createdAt)}</span>
             </p>
             <span className="snipe-points">{s.status === 'reversed' ? 'Reversed' : `+${s.points}`}</span>
-            {s.photoUrl && <img className="feed-photo" src={s.photoUrl} alt="Snipe proof" />}
+            {s.photoUrl && <SnipePhoto src={s.photoUrl} crosshair={s.crosshair} />}
             <ChallengeControls leagueId={leagueId} snipe={s} currentUserId={currentUserId} onChange={onChange} />
           </li>
         )
       })}
     </ul>
+  )
+}
+
+/** The hit photo with the crosshair the shooter had on, at the aim point (the photo's center). */
+function SnipePhoto({ src, crosshair }: { src: string; crosshair?: string | null }) {
+  const [style, color] = crosshair?.split(':') ?? []
+  return (
+    <div className="feed-shot">
+      <img className="feed-photo" src={src} alt="Snipe proof" />
+      {style && color && (
+        <span className="feed-crosshair" aria-hidden>
+          <Crosshair size={48} style={style} color={color} />
+        </span>
+      )}
+    </div>
   )
 }
 

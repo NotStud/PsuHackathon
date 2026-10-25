@@ -985,3 +985,62 @@ img.avatar {
   flex-basis: 100%;
   margin: 0;
 }
+
+/* ---------- League picker before the shot; crosshair on feed photos ---------- */
+.feed-shot {
+  position: relative;
+  grid-column: 1 / -1;
+  line-height: 0;
+}
+.feed-crosshair {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+.league-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.league-choice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  min-height: 56px;
+  padding: 10px 14px;
+  border: 2px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+.league-choice:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.league-choice-meta {
+  display: block;
+  font-weight: 400;
+}
+.badge-ready {
+  background: var(--surface-2);
+  color: var(--text);
+}
+/* The league this camera is armed for, with a way back to the picker before shooting. */
+.snipe-league-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  padding: 0 14px;
+  border-radius: 999px;
+  background: rgb(0 0 0 / 0.45);
+  color: #fff;
+  font-weight: 600;
+}

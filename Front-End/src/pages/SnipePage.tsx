@@ -14,43 +14,20 @@ import { CooldownBadge } from '../components/CooldownBadge'
 import { RuleBadges } from '../components/RuleBadges'
 import { CloseIcon, CrosshairIcon } from '../components/Icons'
 import { Crosshair } from '../components/Crosshair'
+import { useCrosshair } from '../crosshairs'
 import { countdown } from '../format'
 import { useAsync, useNow } from '../hooks'
-import type { League, Member } from '../types'
-
-const LAST_LEAGUE_KEY = 'snipe:lastLeague'
+import type { Member } from '../types'
 
 // The person-detection library is big, so only pages that shoot load it.
 const personCheck = () => import('../camera/personCheck')
 
-function loadLastLeague(): string | null {
-  try {
-    return localStorage.getItem(LAST_LEAGUE_KEY)
-  } catch {
-    return null
-  }
-}
-
-function saveLastLeague(id: string) {
-  try {
-    localStorage.setItem(LAST_LEAGUE_KEY, id)
-  } catch {
-    // Storage unavailable (private mode etc.); just don't remember.
-  }
-}
-
-/** ?league= wins, then the league used last time, then the first one. */
-function pickLeague(requested: string | null, leagues: League[] | null): League | undefined {
-  if (!leagues) return undefined
-  const byId = (id: string | null) => leagues.find((l) => l.id === id)
-  return byId(requested) ?? byId(loadLastLeague()) ?? leagues[0]
-}
-
 /**
- * Full-screen, camera-first snipe flow built for speed:
- * the camera is live the moment the screen opens, one Start tap arms the flick
- * trigger (and starts recording), a flick of the phone takes the shot, and choosing
- * *who* you hit happens after, over the kill cam and hit photo.
+ * Full-screen, camera-first snipe flow, opened only from the red button in the tab bar.
+ * The player first picks the league they're sniping in (so the shot uses that league's
+ * reload time), while the camera warms up behind. One Start tap arms the flick trigger
+ * (and starts recording), a flick takes the shot, and choosing *who* you hit happens
+ * after, over the kill cam and hit photo.
  */
 export function SnipePage() {
   const navigate = useNavigate()
@@ -59,9 +36,20 @@ export function SnipePage() {
   const capturing = useRef(false)
   const [cameraReady, setCameraReady] = useState(false)
 
+  const [crosshair] = useCrosshair()
   const me = useAsync(getCurrentUser, [])
   const leagues = useAsync(getMyLeagues, [])
-  const league = pickLeague(params.get('league'), leagues.data)
+  // Nothing is preselected: the player picks the league each time they open the camera.
+  const league = leagues.data?.find((l) => l.id === params.get('league'))
+  // For the league picker: when this player can shoot again in each league (null = ready).
+  const reloads = useAsync(async () => {
+    if (league) return {}
+    const [user, list] = await Promise.all([getCurrentUser(), getMyLeagues()])
+    const rows = await Promise.all(list.map((l) => getLeaderboard(l.id)))
+    return Object.fromEntries(
+      list.map((l, i) => [l.id, rows[i].find((m) => m.user.id === user.id)?.shooterCooldownUntil ?? null]),
+    ) as Record<string, string | null>
+  }, [league?.id])
   const board = useAsync(
     () => (league ? getLeaderboard(league.id) : Promise.resolve([])),
     [league?.id],
@@ -161,8 +149,9 @@ export function SnipePage() {
     setError(null)
     try {
       await registering.current
-      const snipe = await submitSnipe(league.id, target.user.id, shot.photo, requestId ?? undefined)
-      saveLastLeague(league.id)
+      const snipe = await submitSnipe(
+        league.id, target.user.id, shot.photo, requestId ?? undefined, `${crosshair.style}:${crosshair.color}`,
+      )
       navigator.vibrate?.([30, 50, 30])
       playHit()
       setDone({ member: target, points: snipe.points })
@@ -191,10 +180,12 @@ export function SnipePage() {
     setStarted(false)
   }
 
-  function changeLeague(id: string) {
-    saveLastLeague(id)
-    setParams({ league: id }, { replace: true })
+  // Only before shooting: a shot always belongs to the league it was fired in.
+  function chooseLeague(id: string | null) {
+    setParams(id ? { league: id } : {}, { replace: true })
     setTargetId(null)
+    setError(null)
+    setStarted(false)
   }
 
   return (
@@ -212,24 +203,53 @@ export function SnipePage() {
         >
           <CloseIcon />
         </button>
-        {leagues.data && leagues.data.length > 0 && league && (
-          <select
-            className="snipe-league"
-            value={league.id}
-            onChange={(e) => changeLeague(e.target.value)}
-            disabled={Boolean(shot)}
-            aria-label="League"
-          >
-            {leagues.data.map((l) => (
-              <option key={l.id} value={l.id}>
-                {l.name}
-              </option>
-            ))}
-          </select>
+        {league && (
+          <span className="snipe-league-chip">
+            {league.name}
+            {!shot && (
+              <button className="link-button" onClick={() => chooseLeague(null)}>
+                Change
+              </button>
+            )}
+          </span>
         )}
       </div>
 
-      {!shot && (
+      {/* Step 1: which league this shot is for. */}
+      {!league && leagues.data && leagues.data.length > 0 && (
+        <div className="sheet" role="dialog" aria-label="Which league?">
+          <div className="sheet-header">
+            <h2>Which league are you sniping in?</h2>
+          </div>
+          <p className="muted small">Your shot counts in that league and uses its reload time.</p>
+          <ul className="league-picker">
+            {leagues.data.map((l) => {
+              const until = reloads.data?.[l.id]
+              return (
+                <li key={l.id}>
+                  <button className="league-choice" onClick={() => chooseLeague(l.id)}>
+                    <span>
+                      {l.name}
+                      <span className="muted small league-choice-meta">
+                        {l.memberIds.length} players · {l.shooterCooldownMinutes} min reload
+                      </span>
+                    </span>
+                    {until && Date.parse(until) > now ? (
+                      <CooldownBadge until={until} kind="reloading" />
+                    ) : (
+                      <span className="badge badge-ready">{reloads.loading ? '…' : 'Ready'}</span>
+                    )}
+                  </button>
+                </li>
+              )
+            })}
+          </ul>
+          {reloads.error && <p className="error small">{reloads.error}</p>}
+        </div>
+      )}
+
+      {/* Step 2: the camera, armed for that league. */}
+      {!shot && (league || leagues.data?.length === 0) && (
         <>
           <div className="snipe-reticle" aria-hidden>
             <Crosshair size={96} />
