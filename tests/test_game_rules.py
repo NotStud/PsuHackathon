@@ -82,7 +82,7 @@ class GameRulesTests(unittest.TestCase):
 
     def test_bounty_rotates_through_members_each_round(self):
         alice, bob = self.players[:2]
-        lid = self.league([alice, bob], roundDurationDays=1)  # 12-hour slot each
+        lid = self.league([alice, bob], bountyHours=12)  # 12 hours each
         league = self.at(60, api.get_league, lid, self.session, alice)
         self.assertEqual(league['bountyPlayerId'], str(min(alice.id, bob.id)))
         self.assertEqual(league['bountyEndsAt'], '2026-10-25T00:00:00Z')
@@ -93,7 +93,7 @@ class GameRulesTests(unittest.TestCase):
     def test_bounty_and_king_bonuses_are_added_to_the_snipe(self):
         alice, bob, carol = self.players[:3]
         lid = self.league([alice, bob, carol], pointsPerSnipe=2, bountyBonusPoints=4, kingBonusPoints=3,
-                          shooterCooldownMinutes=0, roundDurationDays=3)  # one day per member
+                          shooterCooldownMinutes=0, bountyHours=24)  # one day each
         bounty = self.at(0, api.get_league, lid, self.session, alice)['bountyPlayerId']
         target = next(p for p in (alice, bob, carol) if str(p.id) == bounty)
         shooter = next(p for p in (alice, bob, carol) if p is not target)

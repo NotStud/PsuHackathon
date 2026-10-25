@@ -47,6 +47,9 @@ def create_db_and_tables():
             ("leagues", "created_at", "TIMESTAMP NOT NULL DEFAULT (CURRENT_TIMESTAMP AT TIME ZONE 'UTC')"),
             ("league_members", "cooldown_until", "TIMESTAMP"),
             ("league_snipes", "request_id", "VARCHAR"),
+            ("leagues", "bounty_hours", "DOUBLE PRECISION NOT NULL DEFAULT 24"),
+            ("leagues", "creator_id", "INTEGER"),
+            ("players", "avatar_url", "TEXT"),
         ):
             connection.execute(text(f'ALTER TABLE public."{table}" ADD COLUMN IF NOT EXISTS "{column}" {definition}'))
         for table in SQLModel.metadata.tables:

@@ -12,6 +12,7 @@ class Player(SQLModel, table=True):
 
     id: int | None = Field(default=None, primary_key=True)
     display_name: str
+    avatar_url: str | None = None  # small JPEG data URL, served by GET /api/players/{id}/avatar
 
 
 # Individual game sessions
@@ -64,7 +65,9 @@ class League(SQLModel, table=True):
     shooter_cooldown_minutes: int = 0
     bounty_bonus_points: int = 0
     king_bonus_points: int = 0
-    round_duration_days: float = 7.0
+    round_duration_days: float = 7.0  # no longer used; bounty_hours sets the rotation
+    bounty_hours: float = 24.0  # how long each member stays the bounty
+    creator_id: int | None = Field(default=None, foreign_key="players.id")
     created_at: NaiveDatetime = Field(default_factory=utc_now)
 
 
@@ -119,3 +122,15 @@ class SnipeChallenge(SQLModel, table=True):
     created_at: NaiveDatetime = Field(default_factory=utc_now)
     approved_by: int | None = Field(default=None, foreign_key="players.id")
     approved_at: NaiveDatetime | None = None
+
+
+# Every shot fired, hit or not. Starts the shooter cooldown and fixes the moment
+# target immunity is judged at, however long the shooter takes to pick a target.
+class LeagueShot(SQLModel, table=True):
+    __tablename__ = "league_shots"
+
+    request_id: str = Field(primary_key=True)
+    league_id: int = Field(foreign_key="leagues.id", index=True)
+    shooter_id: int = Field(foreign_key="players.id", index=True)
+    fired_at: NaiveDatetime = Field(default_factory=utc_now)
+    snipe_id: int | None = Field(default=None, foreign_key="league_snipes.id")
