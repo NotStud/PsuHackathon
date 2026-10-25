@@ -1,6 +1,9 @@
 import type { User } from '../types'
 
 export function Avatar({ user, size = 40 }: { user: User; size?: number }) {
+  if (user.avatarUrl) {
+    return <img className="avatar" src={user.avatarUrl} width={size} height={size} alt="" />
+  }
   return (
     <span
       className="avatar"
