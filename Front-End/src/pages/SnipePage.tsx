@@ -392,7 +392,7 @@ export function SnipePage() {
           )}
           {error && <p className="error">{error}</p>}
           <button
-            className="button button-primary button-block button-large"
+            className="button button-primary button-block button-large send-snipe-button"
             disabled={!target || submitting || !canSend}
             onClick={confirm}
           >

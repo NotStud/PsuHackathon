@@ -1399,3 +1399,13 @@ button:focus-visible, a:focus-visible, summary:focus-visible { outline: 2px soli
 }
 .tab-snipe-button svg { color: #fff; }
 .tab-snipe { gap: 5px; }
+
+.snipe-screen .send-snipe-button {
+  background: #dc2638;
+  border-color: #dc2638;
+  color: #fff;
+}
+.snipe-screen .send-snipe-button:hover:not(:disabled) {
+  background: #ed3547;
+  border-color: #ed3547;
+}
