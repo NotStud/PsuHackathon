@@ -270,6 +270,10 @@ export function SnipePage() {
 
       {done && league && (
         <div className="snipe-success">
+          {/* A headshot gets its own photo, faded, behind the celebration. */}
+          {shot && typeof check === 'object' && check?.headshot && (
+            <img className="success-backdrop" src={shot.photo} alt="" aria-hidden />
+          )}
           <div className="success-icon">
             <CrosshairIcon width={56} height={56} />
           </div>
