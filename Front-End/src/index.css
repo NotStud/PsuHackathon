@@ -839,3 +839,18 @@ ol {
   color: #fff;
   font-size: 0.9rem;
 }
+
+/* ---------- Person check verdict on the hit photo ---------- */
+.shot-verdict {
+  position: absolute;
+  right: 10px;
+  bottom: 8px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: rgb(0 0 0 / 0.6);
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+.shot-verdict.hit { background: #16a34a; }
+.shot-verdict.miss { background: var(--accent); }
