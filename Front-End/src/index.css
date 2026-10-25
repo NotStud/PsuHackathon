@@ -1084,25 +1084,7 @@ img.avatar {
   filter: drop-shadow(0 1px 1px rgb(0 0 0 / 0.35));
   pointer-events: none;
 }
-/* Easy target (last place): target-ring rim, with an "L" on top where the king's crown goes. */
-/* The rim is a target: brown / cream / brown rings around the picture, like a bullseye. */
-.avatar-frame-easy-target .avatar {
-  box-shadow:
-    0 0 0 calc(var(--rim) * 0.7) #8b5a2b,
-    0 0 0 calc(var(--rim) * 1.4) #f5e6d3,
-    0 0 0 calc(var(--rim) * 2.1) #8b5a2b;
-}
-.avatar-loss {
-  position: absolute;
-  left: 50%;
-  transform: translateX(-50%) rotate(-8deg);
-  padding: 0 0.25em;
-  border-radius: 0.3em;
-  background: #8b5a2b;
-  color: #fff;
-  font-weight: 900;
-  line-height: 1.15;
-  text-align: center;
-  box-shadow: 0 1px 2px rgb(0 0 0 / 0.4);
-  pointer-events: none;
-}
+/* Easy target (last place): set up exactly like the king, in brown, with a target
+   where the crown goes. */
+.avatar-frame-easy-target .avatar { box-shadow: 0 0 0 var(--rim) #8b5a2b, 0 0 calc(var(--rim) * 4) rgb(139 90 43 / 0.55); }
+.avatar-crown-target { color: #8b5a2b; stroke: #8b5a2b; }
