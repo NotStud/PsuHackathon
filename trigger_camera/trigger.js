@@ -9,7 +9,7 @@
 // flick instead of a blurred one.
 
 // The one place the default flick sensitivity lives; the slider reads it from here.
-export const DEFAULT_THRESHOLD = 40;  // deg/s of up/down flick speed that shoots
+export const DEFAULT_THRESHOLD = 70;  // deg/s of up/down flick speed that shoots
 
 // Per the DeviceMotion spec, the top of the phone tipping back toward you is positive.
 // If a phone reports upward flicks as negative, flip this to -1.
