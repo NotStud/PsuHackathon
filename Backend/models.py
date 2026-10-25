@@ -94,6 +94,7 @@ class LeagueSnipe(SQLModel, table=True):
     photo_url: str | None = None
     crosshair: str | None = None  # the shooter's crosshair as "style:color", drawn over the photo
     headshot: bool = False  # the app saw the crosshair on the target's head
+    missed: bool = False  # the app saw nobody in the crosshair; counts only once a "hit" challenge passes
     created_at: NaiveDatetime = Field(default_factory=utc_now)
 
 
@@ -130,7 +131,8 @@ class SnipeChallenge(SQLModel, table=True):
 
 
 # A challenge to a snipe, settled by the league's vote. The target can ask for it to be
-# reversed ("reverse"); the shooter can ask for it to count as a headshot ("headshot").
+# reversed ("reverse"); the shooter can ask for it to count as a headshot ("headshot"), or
+# for a missed shot to count as a hit ("hit", sent along with the miss).
 class Challenge(SQLModel, table=True):
     __tablename__ = "league_challenges"
 

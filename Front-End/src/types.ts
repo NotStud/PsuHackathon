@@ -77,21 +77,27 @@ export interface Snipe {
   crosshair?: string | null
   /** Points this snipe earned, including bonuses; 0 once reversed. */
   points: number
-  /** 'challenged' while a challenge is being voted on; 'reversed' once a reversal passes. */
-  status: 'valid' | 'challenged' | 'reversed'
+  /**
+   * 'challenged' while a challenge is being voted on; 'reversed' once a reversal passes;
+   * 'missed' for a miss that wasn't voted a hit.
+   */
+  status: 'valid' | 'challenged' | 'reversed' | 'missed'
   /** Seen by the app when it was taken, or upheld by a vote. */
   headshot: boolean
+  /** The app called it a miss; it counts only once a 'hit' challenge passes. */
+  missed: boolean
   challenges: Challenge[]
   createdAt: string
 }
 
 /**
  * A challenge to a snipe, voted on by everyone but the shooter and the target. The target
- * asks for a reversal ('reverse'); the shooter claims a headshot ('headshot').
+ * asks for a reversal ('reverse'); the shooter claims a headshot ('headshot'), or that a
+ * miss was really a hit ('hit', sent with the miss).
  */
 export interface Challenge {
   id: string
-  kind: 'reverse' | 'headshot'
+  kind: 'reverse' | 'headshot' | 'hit'
   challengerId: string
   reason: string
   /**

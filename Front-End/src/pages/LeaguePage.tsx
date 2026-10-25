@@ -229,16 +229,18 @@ function Feed({
         const sniper = userById.get(s.sniperId)
         const target = userById.get(s.targetId)
         if (!sniper || !target) return null
+        // A miss only counts once the league votes it a hit.
+        const uncountedMiss = s.missed && !s.challenges.some((c) => c.kind === 'hit' && c.status === 'approved')
         return (
           <li key={s.id} className={s.status === 'reversed' ? 'card feed-item reversed' : 'card feed-item'}>
             <Avatar user={sniper} size={32} />
             <p>
-              <strong>{sniper.displayName}</strong> sniped <strong>{target.displayName}</strong>
+              <strong>{sniper.displayName}</strong> {uncountedMiss ? 'shot at' : 'sniped'} <strong>{target.displayName}</strong>
               <span className="muted small"> · {timeAgo(s.createdAt)}</span>
             </p>
             <span className="snipe-points">
               {s.headshot && s.status !== 'reversed' && <span className="badge badge-headshot">Headshot</span>}
-              {s.status === 'reversed' ? 'Reversed' : `+${s.points}`}
+              {s.status === 'reversed' ? 'Reversed' : uncountedMiss ? 'Miss' : `+${s.points}`}
             </span>
             {s.photoUrl && <SnipePhoto src={s.photoUrl} crosshair={s.crosshair} />}
             <ChallengeControls leagueId={leagueId} snipe={s} userById={userById} currentUserId={currentUserId}
@@ -293,8 +295,10 @@ function ChallengeControls({
   const isShooter = currentUserId === snipe.sniperId
   const isVoter = Boolean(currentUserId) && !isTarget && !isShooter
   const has = (kind: Challenge['kind']) => snipe.challenges.some((c) => c.kind === kind)
-  const canReverse = isTarget && snipe.status !== 'reversed' && !has('reverse')
-  const canClaimHeadshot = isShooter && snipe.status !== 'reversed' && !snipe.headshot && !has('headshot')
+  // An uncounted miss can only be voted a hit; once it counts it can be challenged like any hit.
+  const counts = !snipe.missed || snipe.challenges.some((c) => c.kind === 'hit' && c.status === 'approved')
+  const canReverse = counts && isTarget && snipe.status !== 'reversed' && !has('reverse')
+  const canClaimHeadshot = counts && isShooter && snipe.status !== 'reversed' && !snipe.headshot && !has('headshot')
 
   async function run(action: () => Promise<unknown>) {
     setBusy(true)
@@ -322,16 +326,18 @@ function ChallengeControls({
         <div key={c.id} className={`challenge challenge-${c.status}`}>
           <p className="small">
             <strong>{userById.get(c.challengerId)?.displayName ?? 'Someone'}</strong>
-            {c.kind === 'reverse' ? ' challenged this snipe' : ' says it was a headshot'}: “{c.reason}”
+            {{ reverse: ' challenged this snipe', headshot: ' says it was a headshot', hit: ' says this miss was a hit' }[c.kind]}: “{c.reason}”
           </p>
           <p className="muted small">
             {c.status === 'pending' && <>
               <span className="badge badge-challenged">Voting</span>{' '}
               {c.yesVotes} of {c.votesNeeded} yes vote{c.votesNeeded === 1 ? '' : 's'} · the snipe stands until then
             </>}
-            {c.status === 'approved' && (c.kind === 'reverse'
-              ? 'Passed: snipe reversed and points given back.'
-              : 'Passed: counted as a headshot, bonus added.')}
+            {c.status === 'approved' && {
+              reverse: 'Passed: snipe reversed and points given back.',
+              headshot: 'Passed: counted as a headshot, bonus added.',
+              hit: 'Passed: counted as a hit, points added.',
+            }[c.kind]}
             {c.status === 'rejected' && 'Voted down: the snipe stands as it was.'}
           </p>
           {c.status === 'pending' && isVoter && (
@@ -341,7 +347,7 @@ function ChallengeControls({
               ) : (
                 <button className="button button-primary" disabled={busy}
                   onClick={() => void run(() => voteOnChallenge(leagueId, c.id))}>
-                  {busy ? 'Voting…' : c.kind === 'reverse' ? 'Yes, reverse it' : 'Yes, it was a headshot'}
+                  {busy ? 'Voting…' : { reverse: 'Yes, reverse it', headshot: 'Yes, it was a headshot', hit: 'Yes, it was a hit' }[c.kind]}
                 </button>
               )}
             </div>

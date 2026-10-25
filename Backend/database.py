@@ -62,6 +62,7 @@ def migrate_postgres(connection):
         ("players", "avatar_url", "TEXT"),
         ("league_snipes", "crosshair", "VARCHAR"),
         ("league_snipes", "headshot", "BOOLEAN NOT NULL DEFAULT FALSE"),
+        ("league_snipes", "missed", "BOOLEAN NOT NULL DEFAULT FALSE"),
         ("leagues", "headshot_bonus_points", "INTEGER NOT NULL DEFAULT 2"),
         ("leagues", "challenge_votes", "INTEGER NOT NULL DEFAULT 1"),
     ):

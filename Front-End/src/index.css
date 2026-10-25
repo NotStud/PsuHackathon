@@ -837,6 +837,18 @@ ol {
   gap: 8px;
   width: 100%;
 }
+/* Snipe screen: why a miss should count, sent with it as a challenge. */
+.miss-reason {
+  width: 100%;
+  min-height: 44px;
+  margin: 4px 0 8px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 1rem;
+}
 .challenge-form input {
   flex: 1 1 100%;
   min-height: 44px;
