@@ -8,9 +8,9 @@ const HIGHLIGHT_KEY = 'snipe:highlightPeople'
 
 function loadHighlight() {
   try {
-    return localStorage.getItem(HIGHLIGHT_KEY) !== 'off'
+    return localStorage.getItem(HIGHLIGHT_KEY) === 'on'  // off unless the player turned it on
   } catch {
-    return true
+    return false
   }
 }
 
