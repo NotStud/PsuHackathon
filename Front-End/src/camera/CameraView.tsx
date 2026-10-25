@@ -67,8 +67,10 @@ export function CameraView({ ref, onReady }: {
       recording.current = false
       // Grab the pre-flick frame first: stopping the recording releases the buffer.
       const photo = rig.frameAt(steadyAt).toDataURL('image/jpeg', 0.85)
+      // Read the start time now: re-arming during the post-roll starts a new recording.
+      const startedAt = rig.recordingStartedAt
       const clip = await rig.stopRecording(800)
-      return { photo, clip, shotAt: (firedAt - rig.recordingStartedAt) / 1000 }
+      return { photo, clip, shotAt: (firedAt - startedAt) / 1000 }
     },
   }))
 

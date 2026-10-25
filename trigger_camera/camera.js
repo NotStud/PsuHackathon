@@ -36,12 +36,16 @@ export class CameraRig {
   // Starts the clip and the frame buffer. Call this when the player "arms".
   startRecording() {
     if (this.recorder && this.recorder.state !== 'inactive') this.recorder.stop();
-    this.chunks = [];
+    // Each recording keeps its own chunks and "finished" signal, so starting a new one
+    // can't lose or hang a clip that's still being wrapped up.
+    const chunks = [];
+    this.chunks = chunks;
     this.recorder = null;
     try {
       const mimeType = this.mimeType;
       const recorder = new MediaRecorder(this.stream, mimeType ? { mimeType } : undefined);
-      recorder.ondataavailable = e => e.data.size && this.chunks.push(e.data);
+      recorder.ondataavailable = e => e.data.size && chunks.push(e.data);
+      recorder.finished = new Promise(resolve => recorder.addEventListener('stop', resolve, { once: true }));
       recorder.start(250);
       this.recorder = recorder;
     } catch (err) {
@@ -55,15 +59,14 @@ export class CameraRig {
   // Keeps recording for postRollMs (so the clip shows the shot), then returns the clip.
   async stopRecording(postRollMs = 500) {
     this._stopFrames();
-    const recorder = this.recorder;
+    const recorder = this.recorder, chunks = this.chunks;
     if (!recorder || recorder.state === 'inactive') return null;
     await new Promise(r => setTimeout(r, postRollMs));
-    return new Promise(resolve => {
-      recorder.onstop = () => resolve(this.chunks.length
-        ? new Blob(this.chunks, { type: recorder.mimeType || 'video/webm' })
-        : null);
-      recorder.stop();
-    });
+    // If re-arming already stopped this recording during the post-roll, it's finished
+    // (or about to be); don't wait for a stop that already happened.
+    if (recorder.state !== 'inactive') recorder.stop();
+    await recorder.finished;
+    return chunks.length ? new Blob(chunks, { type: recorder.mimeType || 'video/webm' }) : null;
   }
 
   // Latest buffered frame captured at or before time t (performance.now() clock).

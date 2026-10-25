@@ -34,10 +34,18 @@ function killCamVideo(clip: Blob, shotAt: number, crosshairSvg: string, soundId:
  * Save the kill cam (crosshair, slow motion and gunshot sound included) to the phone's camera
  * roll (or download it on a computer), or send it through the share sheet. Rendering starts as
  * soon as this shows, because phones only open the share sheet straight after a tap.
+ * `look` overrides the player's crosshair and sound (last place's forced look).
  */
-export function KillCamActions({ clip, shotAt }: { clip: Blob; shotAt: number }) {
-  const [choice] = useCrosshair()
-  const [sound] = useShotSound()
+export function KillCamActions({ clip, shotAt, look }: {
+  clip: Blob
+  shotAt: number
+  look?: { style: string; color: string; sound: string }
+}) {
+  const [chosen] = useCrosshair()
+  const [chosenSound] = useShotSound()
+  const choice = look ?? chosen
+  // A forced sound replaces the player's, but Off still means silent.
+  const sound = { shot: look && chosenSound.shot !== 'off' ? look.sound : chosenSound.shot }
   const key = `${choice.style}:${choice.color}:${sound.shot}`
   const svgHolder = useRef<HTMLSpanElement>(null)
   const [result, setResult] = useState<{ key: string; clip: Blob; video: Blob } | null>(null)
@@ -96,9 +104,9 @@ export function KillCamActions({ clip, shotAt }: { clip: Blob; shotAt: number })
 
   return (
     <div className="killcam-actions">
-      {/* The crosshair to burn into the video, in the player's chosen style and color. */}
+      {/* The crosshair to burn into the video, in the player's chosen (or forced) style and color. */}
       <span ref={svgHolder} hidden>
-        <Crosshair size={256} />
+        <Crosshair size={256} style={choice.style} color={choice.color} />
       </span>
       <button
         type="button"

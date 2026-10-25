@@ -1,8 +1,16 @@
+import { rimFor } from '../rims'
 import type { League, Member } from '../types'
 import { CrownIcon, TargetIcon } from './Icons'
 
-/** King (first place) and bounty markers, with the bonus each is worth. */
-export function RuleBadges({ member, league }: { member: Member; league: League | null | undefined }) {
+/**
+ * King (first place), easy target (last place) and bounty markers, with the bonus
+ * each is worth. `members` is the whole leaderboard, needed to know who's last.
+ */
+export function RuleBadges({ member, league, members }: {
+  member: Member
+  league: League | null | undefined
+  members?: Member[] | null
+}) {
   const bonus = (points: number | undefined) => (points ? ` +${points}` : '')
   return (
     <>
@@ -10,6 +18,12 @@ export function RuleBadges({ member, league }: { member: Member; league: League 
         <span className="badge badge-king" title="First place: sniping them earns the king bonus">
           <CrownIcon width={14} height={14} />
           King{bonus(league?.kingBonusPoints)}
+        </span>
+      )}
+      {rimFor(member, members) === 'easy-target' && (
+        <span className="badge badge-easy-target" title="Last place: the easiest target in the league">
+          <TargetIcon width={14} height={14} />
+          Easy Target
         </span>
       )}
       {member.isBounty && (

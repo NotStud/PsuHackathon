@@ -67,6 +67,8 @@ class League(SQLModel, table=True):
     king_bonus_points: int = 0
     round_duration_days: float = 7.0  # no longer used; bounty_hours sets the rotation
     bounty_hours: float = 24.0  # how long each member stays the bounty
+    headshot_bonus_points: int = 2
+    challenge_votes: int = 1  # yes votes a challenge needs to pass
     creator_id: int | None = Field(default=None, foreign_key="players.id")
     created_at: NaiveDatetime = Field(default_factory=utc_now)
 
@@ -91,6 +93,7 @@ class LeagueSnipe(SQLModel, table=True):
     request_id: str | None = Field(default=None, index=True)
     photo_url: str | None = None
     crosshair: str | None = None  # the shooter's crosshair as "style:color", drawn over the photo
+    headshot: bool = False  # the app saw the crosshair on the target's head
     created_at: NaiveDatetime = Field(default_factory=utc_now)
 
 
@@ -113,6 +116,7 @@ class AccountSession(SQLModel, table=True):
     expires_at: NaiveDatetime
 
 
+# Old one-approver challenges; copied into league_challenges on startup (see database.py).
 class SnipeChallenge(SQLModel, table=True):
     __tablename__ = "snipe_challenges"
 
@@ -123,6 +127,31 @@ class SnipeChallenge(SQLModel, table=True):
     created_at: NaiveDatetime = Field(default_factory=utc_now)
     approved_by: int | None = Field(default=None, foreign_key="players.id")
     approved_at: NaiveDatetime | None = None
+
+
+# A challenge to a snipe, settled by the league's vote. The target can ask for it to be
+# reversed ("reverse"); the shooter can ask for it to count as a headshot ("headshot").
+class Challenge(SQLModel, table=True):
+    __tablename__ = "league_challenges"
+
+    id: int | None = Field(default=None, primary_key=True)
+    snipe_id: int = Field(foreign_key="league_snipes.id", index=True)
+    kind: str = "reverse"
+    challenger_id: int = Field(foreign_key="players.id")
+    reason: str
+    status: str = "pending"  # pending, approved or rejected
+    created_at: NaiveDatetime = Field(default_factory=utc_now)
+    resolved_at: NaiveDatetime | None = None
+
+
+# One vote per member on a challenge; it can be changed while voting is open.
+class ChallengeVote(SQLModel, table=True):
+    __tablename__ = "challenge_votes"
+
+    challenge_id: int = Field(foreign_key="league_challenges.id", primary_key=True)
+    voter_id: int = Field(foreign_key="players.id", primary_key=True)
+    approve: bool
+    created_at: NaiveDatetime = Field(default_factory=utc_now)
 
 
 # Every shot fired, hit or not. Starts the shooter cooldown and fixes the moment

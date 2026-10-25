@@ -11,7 +11,12 @@ import type { PersonCheck } from './personCheck'
  * the hit photo shows a HEADSHOT / HIT / MISS verdict in its top-right corner, and a
  * button to highlight the detected people and heads (off at the start of every shot).
  */
-export function ShotReview({ shot, check }: { shot: Shot; check: PersonCheck | 'checking' | 'failed' | null }) {
+export function ShotReview({ shot, check, look }: {
+  shot: Shot
+  check: PersonCheck | 'checking' | 'failed' | null
+  /** Overrides the player's crosshair (last place's forced look). */
+  look?: { style: string; color: string }
+}) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const [pop, setPop] = useState(0)
   const [highlight, setHighlight] = useState(false)
@@ -30,7 +35,7 @@ export function ShotReview({ shot, check }: { shot: Shot; check: PersonCheck | '
           <video ref={videoRef} muted playsInline />
           {/* Re-keying restarts the hit-marker animation each loop. */}
           <div key={pop} className={pop ? 'shot-crosshair pop' : 'shot-crosshair'} aria-hidden>
-            <Crosshair size={56} />
+            <Crosshair size={56} style={look?.style} color={look?.color} />
           </div>
           {pop > 0 && <div key={`flash${pop}`} className="snipe-flash" />}
           <span className="shot-label shot-label-live">KILL CAM</span>
@@ -39,7 +44,7 @@ export function ShotReview({ shot, check }: { shot: Shot; check: PersonCheck | '
       <div className="shot-panel">
         <img src={result && highlight ? result.highlighted : shot.photo} alt="Your shot" />
         <div className="shot-crosshair" aria-hidden>
-          <Crosshair size={56} />
+          <Crosshair size={56} style={look?.style} color={look?.color} />
         </div>
         {/* Label and toggle share one row, so they can't overlap. Green = on, red = off. */}
         <div className="shot-footer">

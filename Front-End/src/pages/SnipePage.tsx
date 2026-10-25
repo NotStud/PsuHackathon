@@ -6,18 +6,26 @@ import { MotionTrigger } from '../camera/MotionTrigger'
 import { CameraView, type CameraHandle, type Shot } from '../camera/CameraView'
 import { ShotReview } from '../camera/KillCam'
 import { KillCamActions } from '../camera/KillCamActions'
-import { bang, playHit, playReload } from '../camera/feedback'
+import { preloadFart, bang, playHit, playReload, SHOT_SOUNDS, useShotSound } from '../camera/feedback'
 import type { PersonCheck } from '../camera/personCheck'
 import type { FireInfo } from '../../../trigger_camera/trigger.js'
 import { Avatar } from '../components/Avatar'
+import { rimFor } from '../rims'
 import { CooldownBadge } from '../components/CooldownBadge'
 import { RuleBadges } from '../components/RuleBadges'
 import { CloseIcon, CrosshairIcon } from '../components/Icons'
 import { Crosshair } from '../components/Crosshair'
-import { useCrosshair } from '../crosshairs'
+import { CROSSHAIRS, LAST_PLACE, useCrosshair, type CrosshairChoice } from '../crosshairs'
 import { countdown } from '../format'
 import { useAsync, useNow } from '../hooks'
 import type { Member } from '../types'
+
+/** The player's look with any limited (first place only) crosshair or sound swapped for the default, if any. */
+function withoutLimited(choice: CrosshairChoice, shot: string) {
+  const style = CROSSHAIRS.find((c) => c.id === choice.style)?.limited ? 'classic' : choice.style
+  const sound = SHOT_SOUNDS.find((s) => s.id === shot)?.limited ? 'realistic' : shot
+  return style === choice.style && sound === shot ? undefined : { style, color: choice.color, sound }
+}
 
 // The person-detection library is big, so only pages that shoot load it.
 const personCheck = () => import('../camera/personCheck')
@@ -37,6 +45,7 @@ export function SnipePage() {
   const [cameraReady, setCameraReady] = useState(false)
 
   const [crosshair] = useCrosshair()
+  const [sound] = useShotSound()
   const me = useAsync(getCurrentUser, [])
   const leagues = useAsync(getMyLeagues, [])
   // Nothing is preselected: the player picks the league each time they open the camera.
@@ -85,6 +94,12 @@ export function SnipePage() {
   const target = targets.find((m) => m.user.id === targetId)
   // Sniper cooldown: after every shot you have to wait before the next one.
   const myRow = board.data?.find((m) => me.data && m.user.id === me.data.id)
+  const rim = myRow ? rimFor(myRow, board.data) : undefined
+  // Last place in this league is stuck with the cracked crosshair and the fart sound;
+  // the limited crosshair and sound only work for first place.
+  const look = rim === 'easy-target' ? LAST_PLACE : rim === 'king' ? undefined : withoutLimited(crosshair, sound.shot)
+  // Download last place's recorded fart before the shot, so it plays right on the flick.
+  useEffect(() => { if (rim === 'easy-target') void preloadFart() }, [rim])
   const reloadUntil =
     [myRow?.shooterCooldownUntil, shotReload]
       .filter((t): t is string => Boolean(t) && Date.parse(t!) > now)
@@ -110,7 +125,7 @@ export function SnipePage() {
     if (!canShoot || capturing.current) return
     capturing.current = true
     setError(null)
-    bang()
+    bang(look?.sound)
     setFlash(true)
     setTimeout(() => setFlash(false), 180)
     const id = crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`
@@ -150,7 +165,8 @@ export function SnipePage() {
     try {
       await registering.current
       const snipe = await submitSnipe(
-        league.id, target.user.id, shot.photo, requestId ?? undefined, `${crosshair.style}:${crosshair.color}`,
+        league.id, target.user.id, shot.photo, requestId ?? undefined, `${(look ?? crosshair).style}:${(look ?? crosshair).color}`,
+        typeof check === 'object' && check !== null && check.headshot,
       )
       navigator.vibrate?.([30, 50, 30])
       playHit()
@@ -192,7 +208,7 @@ export function SnipePage() {
     <div className="snipe-screen">
       <CameraView ref={cameraRef} onReady={setCameraReady} />
       {(leagues.error || board.error || me.error) && <p className="snipe-error" role="alert">{leagues.error || board.error || me.error}</p>}
-      {shot && <ShotReview shot={shot} check={check} />}
+      {shot && <ShotReview shot={shot} check={check} look={look} />}
       {flash && <div className="snipe-flash" />}
 
       <div className="snipe-top">
@@ -252,10 +268,20 @@ export function SnipePage() {
       {!shot && (league || leagues.data?.length === 0) && (
         <>
           <div className="snipe-reticle" aria-hidden>
-            <Crosshair size={96} />
+            <Crosshair size={96} style={look?.style} color={look?.color} />
           </div>
           {error && <p className="snipe-error" role="alert">{error}</p>}
           <div className="snipe-bottom">
+            {rim === 'easy-target' && (
+              <p className="snipe-notice">
+                You're in last place: cracked crosshair and fart sound until you climb out.
+              </p>
+            )}
+            {rim === 'king' && (
+              <p className="snipe-notice">
+                You're in first place: the Limited Sparkle crosshair and Bling sound are unlocked in Profile.
+              </p>
+            )}
             {reloadUntil && (
               <p className="snipe-notice">
                 Reloading: you can snipe again in <CooldownBadge until={reloadUntil} kind="reloading" />
@@ -282,7 +308,7 @@ export function SnipePage() {
             </button>
           </div>
           <p className="muted small">Immunity timers are paused at the moment you fired.</p>
-          {shot.clip && <KillCamActions clip={shot.clip} shotAt={shot.shotAt} />}
+          {shot.clip && <KillCamActions clip={shot.clip} shotAt={shot.shotAt} look={look} />}
           {missed && <p className="muted">Nobody was in your crosshair, so this shot can't be sent. Go back and try again.</p>}
           {check === 'failed' && <p className="muted small">Couldn't check this shot automatically, so it's up to you.</p>}
           {!missed && <>
@@ -297,9 +323,9 @@ export function SnipePage() {
                   onClick={() => setTargetId(m.user.id)}
                   aria-pressed={targetId === m.user.id}
                 >
-                  <Avatar user={m.user} size={48} />
+                  <Avatar user={m.user} size={48} rim={rimFor(m, board.data)} />
                   <span>{m.user.displayName}</span>
-                  <RuleBadges member={m} league={league} />
+                  <RuleBadges member={m} league={league} members={board.data} />
                   {m.cooldownUntil && <CooldownBadge until={m.cooldownUntil} frozenAt={firedAt ?? undefined} />}
                 </button>
               </li>
@@ -327,7 +353,7 @@ export function SnipePage() {
             <strong>{done.member.user.displayName}</strong> · +{done.points} points
           </p>
           <p className="small">They're safe for the next {league.cooldownMinutes} minutes.</p>
-          {shot?.clip && <KillCamActions clip={shot.clip} shotAt={shot.shotAt} />}
+          {shot?.clip && <KillCamActions clip={shot.clip} shotAt={shot.shotAt} look={look} />}
           <div className="button-row">
             <Link to={`/leagues/${league.id}`} className="button">
               Leaderboard

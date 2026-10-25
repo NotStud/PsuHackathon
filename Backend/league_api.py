@@ -1,11 +1,12 @@
 """
 Combined Database-backed API & Game Rules Engine matching the React UI's data contract.
-Features adjustable league settings, bounty rotations, 1st-place bonus points, and challenge approvals.
+Features adjustable league settings, bounty rotations, 1st-place and headshot bonus points, and
+challenges settled by league vote.
 """
 
 import secrets
 from datetime import datetime, timedelta
-from typing import Annotated, Optional
+from typing import Annotated, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field as InputField
@@ -16,7 +17,7 @@ router = APIRouter(prefix="/api")
 
 from database import get_session
 from auth import current_player, user_json
-from models import League, LeagueMember, LeagueShot, LeagueSnipe, Player, SnipeChallenge, utc_now
+from models import Challenge, ChallengeVote, League, LeagueMember, LeagueShot, LeagueSnipe, Player, utc_now
 
 SessionDep = Annotated[Session, Depends(get_session)]
 PlayerDep = Annotated[Player, Depends(current_player)]
@@ -30,6 +31,8 @@ class LeagueInput(BaseModel):
     bountyBonusPoints: int = InputField(default=2, ge=0, le=1000)         # Bounty bonus
     kingBonusPoints: int = InputField(default=2, ge=0, le=1000)           # King/1st place bonus
     bountyHours: float = InputField(default=24, gt=0, le=720)             # How long each member is the bounty
+    headshotBonusPoints: int = InputField(default=2, ge=0, le=1000)       # Headshot bonus
+    challengeVotes: int = InputField(default=1, ge=1, le=5)               # Yes votes a challenge needs
 
 
 class RulesInput(BaseModel):
@@ -40,6 +43,8 @@ class RulesInput(BaseModel):
     bountyBonusPoints: Optional[int] = InputField(default=None, ge=0, le=1000)
     kingBonusPoints: Optional[int] = InputField(default=None, ge=0, le=1000)
     bountyHours: Optional[float] = InputField(default=None, gt=0, le=720)
+    headshotBonusPoints: Optional[int] = InputField(default=None, ge=0, le=1000)
+    challengeVotes: Optional[int] = InputField(default=None, ge=1, le=5)
 
 
 # How long after firing a shot it can still be sent as a snipe.
@@ -47,7 +52,8 @@ SHOT_SUBMIT_WINDOW = timedelta(minutes=10)
 
 RULE_COLUMNS = dict(cooldownMinutes="cooldown_minutes", shooterCooldownMinutes="shooter_cooldown_minutes",
                     pointsPerSnipe="points_per_snipe", bountyBonusPoints="bounty_bonus_points",
-                    kingBonusPoints="king_bonus_points", bountyHours="bounty_hours")
+                    kingBonusPoints="king_bonus_points", bountyHours="bounty_hours",
+                    headshotBonusPoints="headshot_bonus_points", challengeVotes="challenge_votes")
 
 
 class ShotInput(BaseModel):
@@ -63,10 +69,18 @@ class SnipeInput(BaseModel):
     photoUrl: Optional[str] = InputField(default=None, max_length=5_000_000)
     requestId: Optional[str] = InputField(default=None, max_length=100)
     crosshair: Optional[str] = InputField(default=None, max_length=40, pattern=r"^[a-z0-9-]+:[a-z0-9-]+$")
+    headshot: bool = False  # the app saw the crosshair on the target's head
 
 
 class ChallengeInput(BaseModel):
     reason: str = InputField(min_length=1, max_length=500)
+    # The target asks for a reversal; the shooter claims a headshot. Worked out from who
+    # is challenging when left out.
+    kind: Optional[Literal["reverse", "headshot"]] = None
+
+
+class VoteInput(BaseModel):
+    approve: bool
 
 
 # =============================================================================
@@ -106,9 +120,13 @@ def league_owner_id(league: League, session: Session) -> Optional[int]:
                         .order_by(LeagueMember.player_id).limit(1)).first()
 
 
+def reversed_ids():
+    """Snipes whose reversal challenge passed: they no longer count."""
+    return select(Challenge.snipe_id).where(Challenge.kind == "reverse", Challenge.status == "approved")
+
+
 def valid_snipes(league: League):
-    reversed_ids = select(SnipeChallenge.snipe_id).where(SnipeChallenge.status == "approved")
-    return select(LeagueSnipe).where(LeagueSnipe.league_id == league.id, LeagueSnipe.id.not_in(reversed_ids))
+    return select(LeagueSnipe).where(LeagueSnipe.league_id == league.id, LeagueSnipe.id.not_in(reversed_ids()))
 
 
 def immune_at(league: League, target_id: int, at_time: datetime, session: Session) -> bool:
@@ -163,14 +181,14 @@ def compute_league_scores_and_points(league: League, session: Session):
     if not snipes:
         return {m.player_id: m.score for m in members}, {}
 
-    # Get approved (reversed) challenges
-    reversed_snipe_ids = set(
-        session.exec(
-            select(SnipeChallenge.snipe_id)
-            .join(LeagueSnipe)
-            .where(LeagueSnipe.league_id == league.id, SnipeChallenge.status == "approved")
-        ).all()
-    )
+    # Challenges that passed: reversed snipes count for nothing, upheld headshot claims get the bonus.
+    passed = session.exec(
+        select(Challenge.snipe_id, Challenge.kind)
+        .join(LeagueSnipe)
+        .where(LeagueSnipe.league_id == league.id, Challenge.status == "approved")
+    ).all()
+    reversed_snipe_ids = {snipe_id for snipe_id, kind in passed if kind == "reverse"}
+    headshot_ids = {snipe_id for snipe_id, kind in passed if kind == "headshot"}
 
     snipe_points = {}
     for hit in snipes:
@@ -199,6 +217,8 @@ def compute_league_scores_and_points(league: League, session: Session):
             pts += league.bounty_bonus_points
         if is_king:
             pts += league.king_bonus_points
+        if hit.headshot or hit.id in headshot_ids:
+            pts += league.headshot_bonus_points
 
         snipe_points[hit.id] = pts
         scores[shooter_id] += pts
@@ -235,6 +255,8 @@ def league_json(league: League, session: Session):
         bountyBonusPoints=league.bounty_bonus_points,
         kingBonusPoints=league.king_bonus_points,
         bountyHours=league.bounty_hours,
+        headshotBonusPoints=league.headshot_bonus_points,
+        challengeVotes=league.challenge_votes,
         creatorId=str(owner_id) if owner_id else None,
         bountyPlayerId=str(bounty_id) if bounty_id else None,
         bountyEndsAt=bounty_until.isoformat() + "Z" if bounty_until else None,
@@ -242,16 +264,40 @@ def league_json(league: League, session: Session):
     )
 
 
-def snipe_json(hit: LeagueSnipe, session: Session, points: int = 0):
-    challenge = session.get(SnipeChallenge, hit.id)
-    status = "valid"
-    challenge_reason = None
-    challenger_id = None
+def challenge_voters(hit: LeagueSnipe, session: Session) -> list[int]:
+    """Everyone in the league except the shooter and the target votes on its challenges."""
+    return [pid for pid in session.exec(select(LeagueMember.player_id).where(LeagueMember.league_id == hit.league_id))
+            if pid not in (hit.shooter_id, hit.target_id)]
 
-    if challenge:
-        status = "reversed" if challenge.status == "approved" else "challenged"
-        challenge_reason = challenge.reason
-        challenger_id = str(challenge.challenger_id)
+
+def votes_needed(league: League, voters: int) -> int:
+    """The league's yes-vote count, capped at how many can vote so small leagues can still pass one."""
+    return max(1, min(league.challenge_votes, voters))
+
+
+def challenge_json(challenge: Challenge, needed: int, session: Session, viewer_id: Optional[int]):
+    votes = session.exec(select(ChallengeVote).where(ChallengeVote.challenge_id == challenge.id)).all()
+    mine = next((v.approve for v in votes if v.voter_id == viewer_id), None)
+    return dict(
+        id=str(challenge.id),
+        kind=challenge.kind,
+        challengerId=str(challenge.challenger_id),
+        reason=challenge.reason,
+        status=challenge.status,
+        yesVotes=sum(v.approve for v in votes),
+        noVotes=sum(not v.approve for v in votes),
+        votesNeeded=needed,
+        myVote=None if mine is None else ("yes" if mine else "no"),
+        createdAt=challenge.created_at.isoformat() + "Z",
+    )
+
+
+def snipe_json(hit: LeagueSnipe, session: Session, points: int = 0, viewer_id: Optional[int] = None):
+    challenges = session.exec(select(Challenge).where(Challenge.snipe_id == hit.id).order_by(Challenge.id)).all()
+    needed = votes_needed(session.get(League, hit.league_id), len(challenge_voters(hit, session))) if challenges else 0
+    passed = {c.kind for c in challenges if c.status == "approved"}
+    status = ("reversed" if "reverse" in passed
+              else "challenged" if any(c.status == "pending" for c in challenges) else "valid")
 
     return dict(
         id=str(hit.id),
@@ -262,8 +308,8 @@ def snipe_json(hit: LeagueSnipe, session: Session, points: int = 0):
         crosshair=hit.crosshair,
         points=points,
         status=status,
-        challengeReason=challenge_reason,
-        challengerId=challenger_id,
+        headshot=hit.headshot or "headshot" in passed,
+        challenges=[challenge_json(c, needed, session, viewer_id) for c in challenges],
         createdAt=hit.created_at.isoformat() + "Z" if hit.created_at else None
     )
 
@@ -306,6 +352,8 @@ def create_league(body: LeagueInput, session: SessionDep, player: PlayerDep):
         bounty_bonus_points=body.bountyBonusPoints,
         king_bonus_points=body.kingBonusPoints,
         bounty_hours=body.bountyHours,
+        headshot_bonus_points=body.headshotBonusPoints,
+        challenge_votes=body.challengeVotes,
         creator_id=player.id,
         join_code=secrets.token_hex(4).upper()
     )
@@ -382,15 +430,7 @@ def leaderboard(league_id: int, session: SessionDep, player: PlayerDep):
     league = require_league(league_id, player, session)
     scores, _ = compute_league_scores_and_points(league, session)
 
-    hits = session.exec(select(LeagueSnipe).where(LeagueSnipe.league_id == league_id)).all()
-    reversed_snipe_ids = set(
-        session.exec(
-            select(SnipeChallenge.snipe_id)
-            .join(LeagueSnipe)
-            .where(LeagueSnipe.league_id == league_id, SnipeChallenge.status == "approved")
-        ).all()
-    )
-    valid_hits = [h for h in hits if h.id not in reversed_snipe_ids]
+    valid_hits = session.exec(valid_snipes(league)).all()
 
     rows = session.exec(
         select(LeagueMember, Player)
@@ -432,7 +472,7 @@ def feed(league_id: int, session: SessionDep, player: PlayerDep):
         .limit(100)
     ).all()
 
-    return [snipe_json(hit, session, hit_pts.get(hit.id, 0)) for hit in hits]
+    return [snipe_json(hit, session, hit_pts.get(hit.id, 0), player.id) for hit in hits]
 
 
 @router.post("/leagues/{league_id}/snipes")
@@ -456,7 +496,7 @@ def submit_snipe(league_id: int, body: SnipeInput, session: SessionDep, player: 
             if existing.target_id != body.targetId:
                 raise HTTPException(409, "Request ID was already used for another target.")
             scores, hit_pts = compute_league_scores_and_points(league, session)
-            return snipe_json(existing, session, hit_pts.get(existing.id, 0))
+            return snipe_json(existing, session, hit_pts.get(existing.id, 0), player.id)
 
     shooter = session.get(LeagueMember, (league_id, player.id))
     target = session.get(LeagueMember, (league_id, body.targetId))
@@ -500,6 +540,7 @@ def submit_snipe(league_id: int, body: SnipeInput, session: SessionDep, player: 
         target_id=body.targetId,
         photo_url=photo,
         crosshair=body.crosshair,
+        headshot=body.headshot,
         request_id=body.requestId,
         created_at=hit_at
     )
@@ -513,63 +554,88 @@ def submit_snipe(league_id: int, body: SnipeInput, session: SessionDep, player: 
     scores, hit_pts = compute_league_scores_and_points(league, session)
     session.commit()
 
-    return snipe_json(hit, session, hit_pts.get(hit.id, 0))
+    return snipe_json(hit, session, hit_pts.get(hit.id, 0), player.id)
 
 
 @router.post("/leagues/{league_id}/snipes/{snipe_id}/challenge")
 def challenge_snipe(league_id: int, snipe_id: int, body: ChallengeInput, session: SessionDep, player: PlayerDep):
+    """The target challenges a snipe to have it reversed; the shooter challenges their own
+    snipe to have it count as a headshot. The rest of the league then votes on it."""
     league = require_league(league_id, player, session)
     hit = session.get(LeagueSnipe, snipe_id)
 
     if not hit or hit.league_id != league_id:
         raise HTTPException(404, "Snipe not found in this league.")
-    if hit.target_id != player.id:
-        raise HTTPException(403, "Only the target of the snipe can challenge it.")
+    kind = {hit.target_id: "reverse", hit.shooter_id: "headshot"}.get(player.id)
+    if not kind:
+        raise HTTPException(403, "Only the shooter or the target can challenge a snipe.")
+    if body.kind and body.kind != kind:
+        raise HTTPException(403, "Only the target can ask for a reversal, and only the shooter can claim a headshot.")
 
-    existing = session.get(SnipeChallenge, snipe_id)
+    session.exec(select(League).where(League.id == league_id).with_for_update()).one()
+    challenges = session.exec(select(Challenge).where(Challenge.snipe_id == snipe_id)).all()
+    existing = next((c for c in challenges if c.kind == kind), None)
     if existing:
-        return snipe_json(hit, session)
+        if existing.status == "rejected":
+            raise HTTPException(409, "This challenge was already voted down.")
+        _, hit_pts = compute_league_scores_and_points(league, session)
+        return snipe_json(hit, session, hit_pts.get(hit.id, 0), player.id)
+    if any(c.kind == "reverse" and c.status == "approved" for c in challenges):
+        raise HTTPException(409, "This snipe was already reversed.")
+    if kind == "headshot" and hit.headshot:
+        raise HTTPException(409, "This snipe already counts as a headshot.")
 
-    challenge = SnipeChallenge(
-        snipe_id=snipe_id,
-        challenger_id=player.id,
-        reason=body.reason.strip(),
-        status="pending",
-        created_at=utc_now()
-    )
-    session.add(challenge)
+    session.add(Challenge(snipe_id=snipe_id, kind=kind, challenger_id=player.id, reason=body.reason.strip()))
+    session.flush()
+    _, hit_pts = compute_league_scores_and_points(league, session)
     session.commit()
-
-    scores, hit_pts = compute_league_scores_and_points(league, session)
-    return snipe_json(hit, session, hit_pts.get(hit.id, 0))
+    return snipe_json(hit, session, hit_pts.get(hit.id, 0), player.id)
 
 
-@router.post("/leagues/{league_id}/snipes/{snipe_id}/approve")
-def approve_challenge(league_id: int, snipe_id: int, session: SessionDep, player: PlayerDep):
+@router.post("/leagues/{league_id}/challenges/{challenge_id}/vote")
+def vote_on_challenge(league_id: int, challenge_id: int, body: VoteInput, session: SessionDep, player: PlayerDep):
+    """Yes or no on a challenge from anyone but the shooter and the target. Whichever side
+    reaches the league's vote count first wins: that many yes votes pass it, that many no votes
+    vote it down (as does no longer being able to reach it). Votes can be changed until then.
+    When it passes, scores (and, for a reversal, timers) are worked out again."""
     league = require_league(league_id, player, session)
-    hit = session.get(LeagueSnipe, snipe_id)
+    session.exec(select(League).where(League.id == league_id).with_for_update()).one()
+    challenge = session.get(Challenge, challenge_id)
+    hit = session.get(LeagueSnipe, challenge.snipe_id) if challenge else None
 
     if not hit or hit.league_id != league_id:
-        raise HTTPException(404, "Snipe not found in this league.")
+        raise HTTPException(404, "Challenge not found in this league.")
     if player.id in (hit.shooter_id, hit.target_id):
-        raise HTTPException(403, "The reviewer must be someone other than the shooter and target.")
+        raise HTTPException(403, "The shooter and the target can't vote on their own snipe.")
+    if challenge.status != "pending":
+        raise HTTPException(409, "Voting on this challenge has closed.")
 
-    challenge = session.get(SnipeChallenge, snipe_id)
-    if not challenge or challenge.status != "pending":
-        raise HTTPException(400, "There is no pending challenge to approve.")
-
-    challenge.status = "approved"
-    challenge.approved_by = player.id
-    challenge.approved_at = utc_now()
-    session.add(challenge)
-
-    # Timers fall back to whatever the remaining valid snipes say.
-    session.flush()
-    refresh_timers(league, (hit.target_id, hit.shooter_id), session)
+    vote = session.get(ChallengeVote, (challenge.id, player.id))
+    if vote:
+        vote.approve = body.approve
+    else:
+        vote = ChallengeVote(challenge_id=challenge.id, voter_id=player.id, approve=body.approve)
+    session.add(vote)
     session.flush()
 
-    # Recalculate round scores dynamically
-    scores, hit_pts = compute_league_scores_and_points(league, session)
+    voters = challenge_voters(hit, session)
+    needed = votes_needed(league, len(voters))
+    votes = session.exec(select(ChallengeVote).where(ChallengeVote.challenge_id == challenge.id)).all()
+    yes = sum(v.approve for v in votes)
+    no = sum(not v.approve for v in votes)
+    if yes >= needed:
+        challenge.status = "approved"
+    elif no >= needed or len(voters) - no < needed:
+        challenge.status = "rejected"
+    if challenge.status != "pending":
+        challenge.resolved_at = utc_now()
+        session.add(challenge)
+        session.flush()
+    if challenge.status == "approved" and challenge.kind == "reverse":
+        # Timers fall back to whatever the remaining valid snipes say.
+        refresh_timers(league, (hit.target_id, hit.shooter_id), session)
+        session.flush()
+
+    _, hit_pts = compute_league_scores_and_points(league, session)
     session.commit()
-
-    return snipe_json(hit, session, hit_pts.get(hit.id, 0))
+    return snipe_json(hit, session, hit_pts.get(hit.id, 0), player.id)
