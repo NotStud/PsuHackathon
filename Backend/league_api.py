@@ -26,9 +26,9 @@ class LeagueInput(BaseModel):
     name: str = InputField(min_length=1, max_length=40)
     cooldownMinutes: int = InputField(default=30, ge=0, le=1440)          # Target immunity
     shooterCooldownMinutes: int = InputField(default=5, ge=0, le=1440)    # Wait after every shot fired
-    pointsPerSnipe: int = InputField(default=10, ge=1, le=1000)           # Base points
-    bountyBonusPoints: int = InputField(default=10, ge=0, le=1000)        # Bounty bonus
-    kingBonusPoints: int = InputField(default=5, ge=0, le=1000)           # King/1st place bonus
+    pointsPerSnipe: int = InputField(default=1, ge=1, le=1000)            # Base points
+    bountyBonusPoints: int = InputField(default=2, ge=0, le=1000)         # Bounty bonus
+    kingBonusPoints: int = InputField(default=2, ge=0, le=1000)           # King/1st place bonus
     bountyHours: float = InputField(default=24, gt=0, le=720)             # How long each member is the bounty
 
 

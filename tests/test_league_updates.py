@@ -107,8 +107,8 @@ class LeagueUpdatesTests(unittest.TestCase):
         league = api.create_league(api.LeagueInput(name='Defaults'), self.session, self.alice)
         rules = {k: league[k] for k in ('cooldownMinutes', 'shooterCooldownMinutes', 'pointsPerSnipe',
                                         'bountyBonusPoints', 'kingBonusPoints', 'bountyHours')}
-        self.assertEqual(rules, dict(cooldownMinutes=30, shooterCooldownMinutes=5, pointsPerSnipe=10,
-                                     bountyBonusPoints=10, kingBonusPoints=5, bountyHours=24))
+        self.assertEqual(rules, dict(cooldownMinutes=30, shooterCooldownMinutes=5, pointsPerSnipe=1,
+                                     bountyBonusPoints=2, kingBonusPoints=2, bountyHours=24))
 
     def test_profile_photo(self):
         user = auth.set_avatar(auth.AvatarInput(avatarUrl=JPEG), self.session, self.alice)
