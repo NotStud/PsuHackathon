@@ -1,7 +1,7 @@
 import type { CSSProperties } from 'react'
 import type { Rim } from '../rims'
 import type { User } from '../types'
-import { CrownIcon, TargetIcon } from './Icons'
+import { CrownIcon } from './Icons'
 
 export function Avatar({ user, size = 40, rim }: { user: User; size?: number; rim?: Rim }) {
   const face = user.avatarUrl ? (
@@ -27,8 +27,9 @@ export function Avatar({ user, size = 40, rim }: { user: User; size?: number; ri
           style={{ top: -size * 0.38 }} fill="currentColor" strokeWidth={1.5} aria-hidden />
       )}
       {rim === 'easy-target' && (
-        <span className="avatar-target" style={{ width: size * 0.42, height: size * 0.42 }} aria-hidden>
-          <TargetIcon width={size * 0.32} height={size * 0.32} strokeWidth={2.5} />
+        // An "L" sits on top, where the king's crown would be.
+        <span className="avatar-loss" style={{ top: -size * 0.3, fontSize: size * 0.36, minWidth: size * 0.42 }} aria-hidden>
+          L
         </span>
       )}
     </span>

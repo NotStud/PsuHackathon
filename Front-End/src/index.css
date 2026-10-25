@@ -1075,17 +1075,19 @@ img.avatar {
   filter: drop-shadow(0 1px 1px rgb(0 0 0 / 0.35));
   pointer-events: none;
 }
-/* Easy target (last place): brown rim, with a target badge at the bottom-right. */
+/* Easy target (last place): brown rim, with an "L" on top where the king's crown goes. */
 .avatar-frame-easy-target .avatar { box-shadow: 0 0 0 var(--rim) #8b5a2b; }
-.avatar-target {
+.avatar-loss {
   position: absolute;
-  right: calc(var(--rim) * -1.5);
-  bottom: calc(var(--rim) * -1.5);
-  display: grid;
-  place-items: center;
-  border-radius: 50%;
+  left: 50%;
+  transform: translateX(-50%) rotate(-8deg);
+  padding: 0 0.25em;
+  border-radius: 0.3em;
   background: #8b5a2b;
   color: #fff;
-  box-shadow: 0 0 0 2px var(--surface);
+  font-weight: 900;
+  line-height: 1.15;
+  text-align: center;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.4);
   pointer-events: none;
 }

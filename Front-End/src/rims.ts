@@ -5,7 +5,7 @@ export type Rim = 'king' | 'easy-target'
 
 /**
  * The king (first place) gets a gold rim and crown; last place is the "easy target":
- * a brown rim with a target.
+ * a brown rim with an "L" on top.
  * Ties count for both. While everyone is level (e.g. all on 0 at the start of a
  * league) nobody is really first or last, so neither rim appears.
  */
