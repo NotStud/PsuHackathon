@@ -6,7 +6,7 @@ import { MotionTrigger } from '../camera/MotionTrigger'
 import { CameraView, type CameraHandle, type Shot } from '../camera/CameraView'
 import { ShotReview } from '../camera/KillCam'
 import { KillCamActions } from '../camera/KillCamActions'
-import { bang, playHit, playReload } from '../camera/feedback'
+import { preloadFart, bang, playHit, playReload } from '../camera/feedback'
 import type { PersonCheck } from '../camera/personCheck'
 import type { FireInfo } from '../../../trigger_camera/trigger.js'
 import { Avatar } from '../components/Avatar'
@@ -88,6 +88,8 @@ export function SnipePage() {
   const myRow = board.data?.find((m) => me.data && m.user.id === me.data.id)
   // Last place in this league is stuck with the cracked crosshair and the fart sound.
   const look = myRow && rimFor(myRow, board.data) === 'easy-target' ? LAST_PLACE : undefined
+  // Download last place's recorded fart before the shot, so it plays right on the flick.
+  useEffect(() => { if (look) void preloadFart() }, [look])
   const reloadUntil =
     [myRow?.shooterCooldownUntil, shotReload]
       .filter((t): t is string => Boolean(t) && Date.parse(t!) > now)

@@ -1,6 +1,8 @@
 // Shot feedback: synthesized sound effects (no audio files) and a recoil buzz.
 // The bang was ported from trigger_camera/index.html.
 import { createPreference } from '../preferences'
+// Bundled into /assets/ by the build (the production server only serves files from there).
+import FART_URL from '../assets/sounds/last-place-fart.mp3'
 
 let audio: AudioContext | null = null
 
@@ -130,6 +132,34 @@ function realisticShot(ctx: BaseAudioContext) {
   slide.start(t + 0.07)
 }
 
+// ---------- Recorded sounds ----------
+
+/** The decoded recording, and where its sound actually starts and how long it lasts. */
+let fart: { buffer: AudioBuffer; start: number; length: number } | null = null
+let fartLoading: Promise<void> | null = null
+
+/**
+ * Fetch and decode last place's fart once. Recordings often begin with silence (this
+ * one has ~0.75 s), which would make it play late after the flick, so we find where
+ * the sound starts and ends and only play that part.
+ */
+export function preloadFart() {
+  fartLoading ??= fetch(FART_URL)
+    .then((r) => r.arrayBuffer())
+    .then((data) => new OfflineAudioContext(1, 1, 48000).decodeAudioData(data))
+    .then((buffer) => {
+      const d = buffer.getChannelData(0)
+      let first = 0, last = d.length - 1
+      while (first < d.length && Math.abs(d[first]) < 0.02) first++
+      while (last > first && Math.abs(d[last]) < 0.02) last--
+      const start = Math.max(0, first / buffer.sampleRate - 0.01)
+      const end = Math.min(buffer.duration, last / buffer.sampleRate + 0.15)
+      fart = { buffer, start, length: end - start }
+    })
+    .catch(() => { fartLoading = null })
+  return fartLoading
+}
+
 /** `hidden` sounds can't be picked; the game assigns them (last place gets "fart"). */
 export const SHOT_SOUNDS: { id: string; name: string; play?: (ctx: BaseAudioContext) => void; hidden?: boolean }[] = [
   { id: 'realistic', name: 'Realistic', play: realisticShot },
@@ -174,74 +204,16 @@ export const SHOT_SOUNDS: { id: string; name: string; play?: (ctx: BaseAudioCont
     },
   },
   {
-    // Last place's gun: a squeaky, silly fart, the embarrassing kind. Modeled like a
-    // voice synthesizer models speech: air through a tight flapping opening gives a
-    // train of pinched pulses, thin high resonances shape them, breathy air rides on
-    // each flap. The pitch whines up then down with a wobbly vibrato, and it ends in
-    // a tiny "pft" as it runs out of air. Randomized every time.
+    // Last place's gun: a recorded fart (assets/sounds/last-place-fart.mp3).
     id: 'fart', name: 'Fart', hidden: true, play: (ctx) => {
-      const rate = ctx.sampleRate
-      const squeak = 0.5 + Math.random() * 0.25   // the squeal, in seconds
-      const pft = 0.12                            // the little "pft" at the end
-      const len = squeak + pft
-      const n = Math.round(rate * len)
-      const source = new Float32Array(n)
-      const air = new Float32Array(n)
-      const base = 260 + Math.random() * 80
-
-      for (let i = 0; i < n;) {
-        const t = i / rate
-        let pitch: number, amp: number
-        if (t < squeak) {
-          // Whine up, then sag down, with a fast wobble.
-          const p = t / squeak
-          const contour = 1 + 0.45 * Math.sin(Math.PI * Math.min(1, p * 1.3)) - 0.25 * p
-          pitch = base * contour * (1 + 0.08 * Math.sin(2 * Math.PI * 8 * t))
-          amp = Math.min(1, t / 0.02) * (1 - 0.5 * p) * (0.85 + Math.random() * 0.3)
-        } else {
-          // The "pft": a few low, breathy flaps.
-          const p = (t - squeak) / pft
-          pitch = 70 - 30 * p
-          amp = 0.7 * (1 - p)
-        }
-        const period = Math.round((rate / pitch) * (0.96 + Math.random() * 0.08))
-        const open = Math.round(period * 0.4), shut = Math.round(period * 0.08)
-        for (let k = 0; k < period && i + k < n; k++) {
-          let flow = 0
-          if (k < open) flow = 0.5 * (1 - Math.cos(Math.PI * k / open))
-          else if (k < open + shut) flow = Math.cos((Math.PI / 2) * (k - open) / shut)
-          source[i + k] = flow * amp
-          air[i + k] = (Math.random() * 2 - 1) * flow * amp * (t < squeak ? 0.5 : 1.5)
-        }
-        i += period
+      if (!fart) {
+        void preloadFart()  // first use: it'll be ready next time
+        return
       }
-
-      // Radiation brightens it; thin, high resonances make it squeaky rather than boomy.
-      const out = new Float32Array(n)
-      const resonate = (x: Float32Array, freq: number, bw: number, gain: number) => {
-        const r = Math.exp(-Math.PI * bw / rate), a1 = 2 * r * Math.cos(2 * Math.PI * freq / rate), a2 = -r * r
-        let y1 = 0, y2 = 0
-        for (let i = 0; i < n; i++) {
-          const y = (1 - r) * x[i] + a1 * y1 + a2 * y2
-          y2 = y1
-          y1 = y
-          out[i] += y * gain
-        }
-      }
-      const buzz = source.map((v, i) => v - (i ? source[i - 1] : 0))
-      resonate(buzz, 650 + Math.random() * 100, 140, 1)
-      resonate(buzz, 1400 + Math.random() * 200, 220, 0.5)
-      resonate(buzz, 2800, 400, 0.15)
-      resonate(air, 500, 700, 0.4)
-
-      const peak = out.reduce((m, v) => Math.max(m, Math.abs(v)), 0) || 1
-      for (let i = 0; i < n; i++) out[i] = (Math.tanh((out[i] / peak) * 1.6) / Math.tanh(1.6)) * 0.6
-
-      const buf = ctx.createBuffer(1, n, rate)
-      buf.getChannelData(0).set(out)
       const src = ctx.createBufferSource()
-      src.buffer = buf
-      play(src, ctx.currentTime, len, filter(ctx, 'lowpass', 5000))
+      src.buffer = fart.buffer
+      src.connect(ctx.destination)
+      src.start(ctx.currentTime, fart.start, fart.length)
     },
   },
   { id: 'off', name: 'Off' },
