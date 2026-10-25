@@ -11,6 +11,7 @@ from typing import Annotated, Literal, Optional
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field as InputField
 from sqlmodel import Session, not_, or_, select
+from sqlalchemy.orm import load_only
 
 router = APIRouter(prefix="/api")
 
@@ -90,13 +91,14 @@ class ChallengeInput(BaseModel):
 # =============================================================================
 # GAME ENGINE LOGIC (Bounty, King, and Dynamic Score Recalculation)
 # =============================================================================
-def get_bounty_player_id(league: League, at_time: datetime, session: Session) -> Optional[int]:
+def get_bounty_player_id(league: League, at_time: datetime, session: Session, member_ids=None) -> Optional[int]:
     """Each member is the bounty for `bounty_hours`, in player-ID order, starting when the league was made."""
-    member_ids = session.exec(
-        select(LeagueMember.player_id)
-        .where(LeagueMember.league_id == league.id)
-        .order_by(LeagueMember.player_id)
-    ).all()
+    if member_ids is None:
+        member_ids = session.exec(
+            select(LeagueMember.player_id)
+            .where(LeagueMember.league_id == league.id)
+            .order_by(LeagueMember.player_id)
+        ).all()
     if not member_ids:
         return None
     slot = league.bounty_hours * 3600
@@ -173,7 +175,7 @@ def refresh_timers(league: League, player_ids, session: Session):
         session.add(member)
 
 
-def compute_league_scores_and_points(league: League, session: Session):
+def compute_league_scores_and_points(league: League, session: Session, *, persist=True):
     """
     Chronologically evaluates all valid snipes to calculate individual member scores
     and award bonus points (bounty + king). Reversals dynamically update points.
@@ -182,9 +184,13 @@ def compute_league_scores_and_points(league: League, session: Session):
         select(LeagueMember).where(LeagueMember.league_id == league.id)
     ).all()
     scores = {m.player_id: 0 for m in members}
+    member_ids = sorted(scores)
 
     snipes = session.exec(
+        # Scoring never needs historical image payloads.
         select(LeagueSnipe)
+        .options(load_only(LeagueSnipe.id, LeagueSnipe.shooter_id, LeagueSnipe.target_id,
+                           LeagueSnipe.created_at, LeagueSnipe.headshot, LeagueSnipe.missed))
         .where(LeagueSnipe.league_id == league.id)
         .order_by(LeagueSnipe.created_at.asc(), LeagueSnipe.id.asc())
     ).all()
@@ -219,7 +225,7 @@ def compute_league_scores_and_points(league: League, session: Session):
             scores[target_id] = 0
 
         # Calculate bonus triggers
-        bounty_id = get_bounty_player_id(league, hit.created_at, session)
+        bounty_id = get_bounty_player_id(league, hit.created_at, session, member_ids)
         is_bounty = (target_id == bounty_id)
 
         max_score = max(scores.values()) if scores else 0
@@ -238,11 +244,12 @@ def compute_league_scores_and_points(league: League, session: Session):
         scores[shooter_id] += pts
         scores[target_id] -= 1  # Penalty for getting sniped
 
-    # Persist updated scores
-    for member in members:
-        member.score = scores.get(member.player_id, 0)
-        session.add(member)
-    session.flush()
+    # Read endpoints must not write scores or hold member row locks.
+    if persist:
+        for member in members:
+            member.score = scores.get(member.player_id, 0)
+            session.add(member)
+        session.flush()
 
     return scores, snipe_points
 
@@ -289,11 +296,12 @@ def votes_needed(league: League, voters: int) -> int:
     return max(1, min(league.challenge_votes, voters))
 
 
-def challenge_json(challenge: Challenge, needed: int, session: Session, viewer_id: Optional[int]):
+def challenge_json(challenge: Challenge, needed: int, session: Session, viewer_id: Optional[int], yes=None):
     # Only yes votes count (votes are yes-only now; older no votes are ignored).
-    yes = session.exec(select(ChallengeVote.voter_id).where(ChallengeVote.challenge_id == challenge.id,
-                                                             ChallengeVote.approve)
-                       .order_by(ChallengeVote.created_at)).all()
+    if yes is None:
+        yes = session.exec(select(ChallengeVote.voter_id).where(ChallengeVote.challenge_id == challenge.id,
+                                                                 ChallengeVote.approve)
+                           .order_by(ChallengeVote.created_at)).all()
     return dict(
         id=str(challenge.id),
         kind=challenge.kind,
@@ -317,9 +325,12 @@ def counts_as_headshot(hit: LeagueSnipe, challenges: list[Challenge]) -> bool:
     return hit.headshot or any(c.kind == "headshot" or c.headshot for c in passed)
 
 
-def snipe_json(hit: LeagueSnipe, session: Session, points: int = 0, viewer_id: Optional[int] = None):
-    challenges = session.exec(select(Challenge).where(Challenge.snipe_id == hit.id).order_by(Challenge.id)).all()
-    needed = votes_needed(session.get(League, hit.league_id), len(challenge_voters(hit, session))) if challenges else 0
+def snipe_json(hit: LeagueSnipe, session: Session, points: int = 0, viewer_id: Optional[int] = None,
+               *, challenges=None, needed=None, votes=None):
+    if challenges is None:
+        challenges = session.exec(select(Challenge).where(Challenge.snipe_id == hit.id).order_by(Challenge.id)).all()
+    if needed is None:
+        needed = votes_needed(session.get(League, hit.league_id), len(challenge_voters(hit, session))) if challenges else 0
     passed = {c.kind for c in challenges if c.status == "approved"}
     headshot = counts_as_headshot(hit, challenges)
     status = ("reversed" if "reverse" in passed
@@ -337,7 +348,8 @@ def snipe_json(hit: LeagueSnipe, session: Session, points: int = 0, viewer_id: O
         status=status,
         headshot=headshot,
         missed=hit.missed,
-        challenges=[challenge_json(c, needed, session, viewer_id) for c in challenges],
+        challenges=[challenge_json(c, needed, session, viewer_id,
+                                   votes.get(c.id, []) if votes is not None else None) for c in challenges],
         createdAt=hit.created_at.isoformat() + "Z" if hit.created_at else None
     )
 
@@ -476,9 +488,10 @@ def fire_shot(league_id: int, body: ShotInput, session: SessionDep, player: Play
 @router.get("/leagues/{league_id}/leaderboard")
 def leaderboard(league_id: int, session: SessionDep, player: PlayerDep):
     league = require_league(league_id, player, session)
-    scores, _ = compute_league_scores_and_points(league, session)
+    scores, _ = compute_league_scores_and_points(league, session, persist=False)
 
-    valid_hits = session.exec(valid_snipes(league)).all()
+    valid_hits = session.exec(valid_snipes(league).options(
+        load_only(LeagueSnipe.shooter_id, LeagueSnipe.target_id))).all()
 
     rows = session.exec(
         select(LeagueMember, Player)
@@ -487,6 +500,7 @@ def leaderboard(league_id: int, session: SessionDep, player: PlayerDep):
         .order_by(LeagueMember.score.desc(), Player.id)
     ).all()
 
+    rows = sorted(rows, key=lambda row: (-scores.get(row[0].player_id, 0), row[1].id))
     now = utc_now()
     bounty_id = get_bounty_player_id(league, now, session)
     max_score = max(scores.values()) if scores else 0
@@ -494,7 +508,7 @@ def leaderboard(league_id: int, session: SessionDep, player: PlayerDep):
     return [
         dict(
             user=user_json(user),
-            points=member.score,
+            points=scores.get(member.player_id, 0),
             snipes=sum(h.shooter_id == user.id for h in valid_hits),
             timesSniped=sum(h.target_id == user.id for h in valid_hits),
             cooldownUntil=member.out_until.isoformat() + "Z"
@@ -502,7 +516,7 @@ def leaderboard(league_id: int, session: SessionDep, player: PlayerDep):
             shooterCooldownUntil=member.cooldown_until.isoformat() + "Z"
             if member.cooldown_until and member.cooldown_until > now else None,
             isBounty=(user.id == bounty_id),
-            isKing=(member.score == max_score and member.score > 0)
+            isKing=(scores.get(member.player_id, 0) == max_score and max_score > 0)
         )
         for member, user in rows
     ]
@@ -511,7 +525,7 @@ def leaderboard(league_id: int, session: SessionDep, player: PlayerDep):
 @router.get("/leagues/{league_id}/feed")
 def feed(league_id: int, session: SessionDep, player: PlayerDep):
     league = require_league(league_id, player, session)
-    scores, hit_pts = compute_league_scores_and_points(league, session)
+    scores, hit_pts = compute_league_scores_and_points(league, session, persist=False)
 
     hits = session.exec(
         select(LeagueSnipe)
@@ -520,7 +534,25 @@ def feed(league_id: int, session: SessionDep, player: PlayerDep):
         .limit(100)
     ).all()
 
-    return [snipe_json(hit, session, hit_pts.get(hit.id, 0), player.id) for hit in hits]
+    if not hits:
+        return []
+    challenges = session.exec(select(Challenge).where(
+        Challenge.snipe_id.in_([hit.id for hit in hits])).order_by(Challenge.id)).all()
+    by_hit = {}
+    votes = {}
+    for challenge in challenges:
+        by_hit.setdefault(challenge.snipe_id, []).append(challenge)
+    if challenges:
+        for cid, voter_id in session.exec(select(ChallengeVote.challenge_id, ChallengeVote.voter_id).where(
+            ChallengeVote.challenge_id.in_([c.id for c in challenges]), ChallengeVote.approve)
+            .order_by(ChallengeVote.created_at)).all():
+            votes.setdefault(cid, []).append(voter_id)
+    member_ids = set(session.exec(select(LeagueMember.player_id).where(
+        LeagueMember.league_id == league_id)).all()) if challenges else set()
+    return [snipe_json(hit, session, hit_pts.get(hit.id, 0), player.id,
+                       challenges=by_hit.get(hit.id, []), votes=votes,
+                       needed=votes_needed(league, len(member_ids - {hit.shooter_id, hit.target_id})))
+            for hit in hits]
 
 
 @router.post("/leagues/{league_id}/snipes")
@@ -611,9 +643,11 @@ def submit_snipe(league_id: int, body: SnipeInput, session: SessionDep, player: 
 
     # Recalculate scores and hit values
     scores, hit_pts = compute_league_scores_and_points(league, session)
+    # Serialize before commit expires ORM objects and forces another image fetch.
+    result = snipe_json(hit, session, hit_pts.get(hit.id, 0), player.id)
     session.commit()
 
-    return snipe_json(hit, session, hit_pts.get(hit.id, 0), player.id)
+    return result
 
 
 @router.post("/leagues/{league_id}/snipes/{snipe_id}/challenge")
