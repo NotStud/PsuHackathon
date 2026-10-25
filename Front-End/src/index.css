@@ -857,7 +857,7 @@ ol {
 .shot-verdict.hit { background: #16a34a; }
 .shot-verdict.miss { background: var(--accent); }
 .shot-verdict.headshot { background: #facc15; color: #000; }
-/* HIT PHOTO label with the Highlight toggle beside it, in one row at the bottom-left. */
+/* HIT PHOTO label (left) and the Highlight toggle (far right), in one row along the bottom. */
 .shot-footer {
   position: absolute;
   left: 10px;
@@ -870,6 +870,7 @@ ol {
 .shot-footer .shot-label { position: static; }
 .highlight-toggle {
   flex-shrink: 0;
+  margin-left: auto;  /* pushed to the far right of the row */
   padding: 2px 7px;
   border: none;
   border-radius: 999px;
