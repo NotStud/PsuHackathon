@@ -41,6 +41,16 @@ async function seek(video: HTMLVideoElement, time: number) {
   await seeked
 }
 
+/** Whether the audio clock is really advancing; a just-started context can report "running" first. */
+async function audioClockRunning(ctx: AudioContext) {
+  const startedAt = ctx.currentTime
+  for (let i = 0; i < 20; i++) {
+    await new Promise((r) => setTimeout(r, 25))
+    if (ctx.currentTime > startedAt) return true
+  }
+  return false
+}
+
 function loadSvg(svg: string) {
   return new Promise<HTMLImageElement>((resolve, reject) => {
     const image = new Image()
@@ -63,7 +73,9 @@ export async function renderKillCam(
   const crosshair = await loadSvg(crosshairSvg)
   // Sound can only be recorded while the audio context runs (it needs an earlier tap on iOS).
   if (gunshot && gunshot.ctx.state !== 'running') await gunshot.ctx.resume().catch(() => {})
-  const audioOut = gunshot?.ctx.state === 'running' ? gunshot.ctx.createMediaStreamDestination() : null
+  const audioOut = gunshot?.ctx.state === 'running' && (await audioClockRunning(gunshot.ctx))
+    ? gunshot.ctx.createMediaStreamDestination()
+    : null
   // Feed silence from the start: Chrome sends no audio until something plays, and the
   // recording would then start at the gunshot and lose the run-up.
   const silence = audioOut && gunshot ? gunshot.ctx.createConstantSource() : null
