@@ -80,10 +80,11 @@ class SnipeInput(BaseModel):
 
 
 class ChallengeInput(BaseModel):
-    reason: str = InputField(min_length=1, max_length=500)
-    # The target asks for a reversal; the shooter claims a headshot. Worked out from who
-    # is challenging when left out.
-    kind: Optional[Literal["reverse", "headshot"]] = None
+    reason: str = InputField(default="", max_length=500)  # optional
+    # The target asks for a reversal ("no hit") or for the headshot not to count ("no
+    # headshot"); the shooter claims a headshot. Left out: reversal for the target, headshot
+    # for the shooter.
+    kind: Optional[Literal["reverse", "no-headshot", "headshot"]] = None
 
 
 # =============================================================================
@@ -198,7 +199,9 @@ def compute_league_scores_and_points(league: League, session: Session):
         .where(LeagueSnipe.league_id == league.id, Challenge.status == "approved")
     ).all()
     reversed_snipe_ids = {snipe_id for snipe_id, kind, _ in passed if kind == "reverse"}
-    headshot_ids = {snipe_id for snipe_id, kind, headshot in passed if kind == "headshot" or headshot}
+    no_headshot_ids = {snipe_id for snipe_id, kind, _ in passed if kind == "no-headshot"}
+    headshot_ids = {snipe_id for snipe_id, kind, headshot in passed
+                    if kind == "headshot" or headshot} - no_headshot_ids
     upheld_miss_ids = {snipe_id for snipe_id, kind, _ in passed if kind == "hit"}
 
     snipe_points = {}
@@ -228,7 +231,7 @@ def compute_league_scores_and_points(league: League, session: Session):
             pts += league.bounty_bonus_points
         if is_king:
             pts += league.king_bonus_points
-        if hit.headshot or hit.id in headshot_ids:
+        if (hit.headshot and hit.id not in no_headshot_ids) or hit.id in headshot_ids:
             pts += league.headshot_bonus_points
 
         snipe_points[hit.id] = pts
@@ -306,11 +309,19 @@ def challenge_json(challenge: Challenge, needed: int, session: Session, viewer_i
     )
 
 
+def counts_as_headshot(hit: LeagueSnipe, challenges: list[Challenge]) -> bool:
+    """Seen by the app or upheld by a vote, and not voted down by a passed "no headshot"."""
+    passed = [c for c in challenges if c.status == "approved"]
+    if any(c.kind == "no-headshot" for c in passed):
+        return False
+    return hit.headshot or any(c.kind == "headshot" or c.headshot for c in passed)
+
+
 def snipe_json(hit: LeagueSnipe, session: Session, points: int = 0, viewer_id: Optional[int] = None):
     challenges = session.exec(select(Challenge).where(Challenge.snipe_id == hit.id).order_by(Challenge.id)).all()
     needed = votes_needed(session.get(League, hit.league_id), len(challenge_voters(hit, session))) if challenges else 0
     passed = {c.kind for c in challenges if c.status == "approved"}
-    headshot = hit.headshot or any(c.status == "approved" and (c.kind == "headshot" or c.headshot) for c in challenges)
+    headshot = counts_as_headshot(hit, challenges)
     status = ("reversed" if "reverse" in passed
               else "challenged" if any(c.status == "pending" for c in challenges)
               else "missed" if hit.missed and "hit" not in passed else "valid")
@@ -542,12 +553,8 @@ def submit_snipe(league_id: int, body: SnipeInput, session: SessionDep, player: 
     photo = body.photoUrl
     if photo and not photo.startswith(("data:image/", "https://")):
         raise HTTPException(422, "Photo must be an image data URL or HTTPS URL.")
-    reason = (body.challengeReason or "").strip()
-    if body.missed and not reason:
-        raise HTTPException(422, "Say why this miss should count as a hit.")
+    reason = (body.challengeReason or "").strip()  # optional
     claim_headshot = body.claimHeadshot and not body.headshot  # the app already saw a headshot
-    if claim_headshot and not reason:
-        raise HTTPException(422, "Say why it was a headshot.")
 
     # Apply timers. The snipe counts from the moment it was fired. A miss doesn't make the
     # target immune unless the league votes it a hit.
@@ -591,19 +598,21 @@ def submit_snipe(league_id: int, body: SnipeInput, session: SessionDep, player: 
 
 @router.post("/leagues/{league_id}/snipes/{snipe_id}/challenge")
 def challenge_snipe(league_id: int, snipe_id: int, body: ChallengeInput, session: SessionDep, player: PlayerDep):
-    """The target challenges a snipe to have it reversed; the shooter challenges their own
-    snipe to have it count as a headshot. The rest of the league then votes on it. (A miss's
-    "hit" challenge is sent with the miss itself.)"""
+    """The target challenges a snipe to have it reversed ("no hit") or its headshot not count
+    ("no headshot"); the shooter challenges their own snipe to have it count as a headshot.
+    The rest of the league then votes on it. (A miss's "hit" challenge is sent with the miss
+    itself.)"""
     league = require_league(league_id, player, session)
     hit = session.get(LeagueSnipe, snipe_id)
 
     if not hit or hit.league_id != league_id:
         raise HTTPException(404, "Snipe not found in this league.")
-    kind = {hit.target_id: "reverse", hit.shooter_id: "headshot"}.get(player.id)
-    if not kind:
+    allowed = {hit.target_id: ("reverse", "no-headshot"), hit.shooter_id: ("headshot",)}.get(player.id)
+    if not allowed:
         raise HTTPException(403, "Only the shooter or the target can challenge a snipe.")
-    if body.kind and body.kind != kind:
-        raise HTTPException(403, "Only the target can ask for a reversal, and only the shooter can claim a headshot.")
+    kind = body.kind or allowed[0]
+    if kind not in allowed:
+        raise HTTPException(403, "The target can say no hit or no headshot; only the shooter can claim a headshot.")
 
     session.exec(select(League).where(League.id == league_id).with_for_update()).one()
     challenges = session.exec(select(Challenge).where(Challenge.snipe_id == snipe_id)).all()
@@ -617,8 +626,11 @@ def challenge_snipe(league_id: int, snipe_id: int, body: ChallengeInput, session
         raise HTTPException(409, "This snipe was already reversed.")
     if hit.missed and not any(c.kind == "hit" and c.status == "approved" for c in challenges):
         raise HTTPException(409, "This shot doesn't count as a hit yet.")
-    if kind == "headshot" and (hit.headshot or any(c.kind == "hit" and c.headshot for c in challenges)):
-        raise HTTPException(409, "This snipe already counts as a headshot, or claims one.")
+    if kind == "headshot" and (hit.headshot or any(c.kind == "no-headshot" or (c.kind == "hit" and c.headshot)
+                                                   for c in challenges)):
+        raise HTTPException(409, "This snipe already counts as a headshot, claims one, or had it challenged.")
+    if kind == "no-headshot" and not counts_as_headshot(hit, challenges):
+        raise HTTPException(409, "This snipe doesn't count as a headshot.")
 
     session.add(Challenge(snipe_id=snipe_id, kind=kind, challenger_id=player.id, reason=body.reason.strip()))
     session.flush()

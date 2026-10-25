@@ -1,4 +1,4 @@
-import type { FiredShot, League, LeagueRules, Member, Snipe, User } from '../types'
+import type { Challenge, FiredShot, League, LeagueRules, Member, Snipe, User } from '../types'
 
 // Testing aid: open any page with ?simulate=first to see the app as if you were in
 // first place in every league (only on this device; the server's scores don't change).
@@ -82,9 +82,12 @@ export const fireShot = (leagueId: string, requestId: string) =>
   request<FiredShot>(`/leagues/${leagueId}/shots`, { requestId })
 /** A small image data URL, or null to remove the photo. */
 export const setAvatar = (avatarUrl: string | null) => request<User>('/me/avatar', { avatarUrl })
-/** The target challenges to reverse a snipe; the shooter challenges to claim a headshot. */
-export const challengeSnipe = (leagueId: string, snipeId: string, reason: string) =>
-  request<Snipe>(`/leagues/${leagueId}/snipes/${snipeId}/challenge`, { reason })
+/**
+ * The target challenges a snipe: no hit ('reverse') or no headshot ('no-headshot'); the
+ * shooter claims a headshot ('headshot'). The reason is optional.
+ */
+export const challengeSnipe = (leagueId: string, snipeId: string, kind: Challenge['kind'], reason = '') =>
+  request<Snipe>(`/leagues/${leagueId}/snipes/${snipeId}/challenge`, { kind, reason })
 /** Vote yes on a challenge (there is no no vote). */
 export const voteOnChallenge = (leagueId: string, challengeId: string) =>
   request<Snipe>(`/leagues/${leagueId}/challenges/${challengeId}/vote`, {})

@@ -92,13 +92,15 @@ export interface Snipe {
 
 /**
  * A challenge to a snipe, voted on by everyone but the shooter and the target. The target
- * asks for a reversal ('reverse'); the shooter claims a headshot ('headshot'), or that a
- * miss was really a hit ('hit', sent with the miss).
+ * says no hit ('reverse') or no headshot ('no-headshot': the hit stands, the bonus goes);
+ * the shooter claims a headshot ('headshot'), or that a miss was really a hit ('hit', sent
+ * with the miss).
  */
 export interface Challenge {
   id: string
-  kind: 'reverse' | 'headshot' | 'hit'
+  kind: 'reverse' | 'no-headshot' | 'headshot' | 'hit'
   challengerId: string
+  /** Optional: empty when the challenger didn't write anything. */
   reason: string
   /**
    * 'approved' at votesNeeded yes votes; until then 'pending' and the snipe stands. There

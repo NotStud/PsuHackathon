@@ -256,12 +256,11 @@ class GameRulesTests(unittest.TestCase):
         self.assertEqual((board['Alice']['points'], board['Bob']['points']), (10, -1))
         self.assertEqual(board['Bob']['cooldownUntil'], '2026-10-24T12:15:00Z')  # immune from when it was fired
 
-    def test_a_miss_needs_a_reason(self):
+    def test_a_miss_can_be_sent_without_a_reason(self):
         alice, bob = self.players[:2]
         lid = self.league([alice, bob])
-        with self.assertRaises(HTTPException) as error:
-            self.miss(lid, alice, bob, 0, reason='  ')
-        self.assertEqual(error.exception.status_code, 422)
+        sent = self.miss(lid, alice, bob, 0, reason='  ')
+        self.assertEqual([(c['kind'], c['reason']) for c in sent['challenges']], [('hit', '')])
 
     def test_an_uncounted_miss_cannot_be_reversed_or_claimed_as_a_headshot(self):
         alice, bob, carol, dave = self.players
@@ -296,12 +295,11 @@ class GameRulesTests(unittest.TestCase):
         self.assertEqual((upheld['points'], upheld['headshot']), (15, True))
         self.assertEqual(self.board(lid, 1)['Alice']['points'], 15)
 
-    def test_claiming_a_headshot_needs_a_reason(self):
+    def test_claiming_a_headshot_without_a_reason(self):
         alice, bob = self.players[:2]
         lid = self.league([alice, bob])
-        with self.assertRaises(HTTPException) as error:
-            self.at(0, api.submit_snipe, lid, api.SnipeInput(targetId=bob.id, claimHeadshot=True), self.session, alice)
-        self.assertEqual(error.exception.status_code, 422)
+        sent = self.at(0, api.submit_snipe, lid, api.SnipeInput(targetId=bob.id, claimHeadshot=True), self.session, alice)
+        self.assertEqual([(c['kind'], c['reason']) for c in sent['challenges']], [('headshot', '')])
 
     def test_a_miss_claimed_as_a_headshot_gets_the_hit_and_the_bonus(self):
         alice, bob, carol, dave = self.players
@@ -316,3 +314,45 @@ class GameRulesTests(unittest.TestCase):
         self.assertEqual((counted['points'], counted['headshot'], counted['status']), (15, True, 'valid'))
         board = self.board(lid, 1)
         self.assertEqual((board['Alice']['points'], board['Bob']['points']), (15, -1))
+
+    def test_challenging_from_the_feed_without_a_reason(self):
+        alice, bob, carol, dave = self.players
+        lid = self.league(self.players)
+        challenged = self.challenge(lid, self.snipe(lid, alice, bob, 0), bob, reason='')
+        self.assertEqual(challenged['challenges'][0]['reason'], '')
+
+    def test_no_headshot_keeps_the_hit_and_drops_the_bonus(self):
+        alice, bob, carol, dave = self.players
+        lid = self.league(self.players, pointsPerSnipe=10, headshotBonusPoints=5)
+        hit = self.at(0, api.submit_snipe, lid, api.SnipeInput(targetId=bob.id, headshot=True), self.session, alice)
+        self.assertEqual(hit['points'], 15)
+        challenged = api.challenge_snipe(lid, int(hit['id']), api.ChallengeInput(kind='no-headshot'), self.session, bob)
+        self.assertEqual([c['kind'] for c in challenged['challenges']], ['no-headshot'])
+        self.assertEqual(challenged['points'], 15)  # until someone votes yes
+        passed = self.vote(lid, challenged, carol)
+        self.assertEqual((passed['points'], passed['headshot'], passed['status']), (10, False, 'valid'))
+        board = self.board(lid, 1)
+        self.assertEqual((board['Alice']['points'], board['Bob']['points']), (10, -1))  # still a hit
+        self.assertIsNotNone(board['Bob']['cooldownUntil'])
+        with self.assertRaises(HTTPException) as again:  # and the shooter can't claim it back
+            self.challenge(lid, passed, alice, reason='It was')
+        self.assertEqual(again.exception.status_code, 409)
+
+    def test_no_headshot_on_an_upheld_headshot_claim(self):
+        alice, bob, carol, dave = self.players
+        lid = self.league(self.players, pointsPerSnipe=10, headshotBonusPoints=5)
+        sent = self.at(0, api.submit_snipe, lid, api.SnipeInput(targetId=bob.id, claimHeadshot=True), self.session, alice)
+        self.assertEqual(self.vote(lid, sent, carol)['points'], 15)
+        challenged = api.challenge_snipe(lid, int(sent['id']), api.ChallengeInput(kind='no-headshot'), self.session, bob)
+        self.assertEqual(self.vote(lid, challenged, dave, kind='no-headshot')['points'], 10)
+
+    def test_no_headshot_needs_a_headshot(self):
+        alice, bob = self.players[:2]
+        lid = self.league([alice, bob])
+        hit = self.snipe(lid, alice, bob, 0)
+        with self.assertRaises(HTTPException) as error:
+            api.challenge_snipe(lid, int(hit['id']), api.ChallengeInput(kind='no-headshot'), self.session, bob)
+        self.assertEqual(error.exception.status_code, 409)
+        with self.assertRaises(HTTPException) as shooter:
+            api.challenge_snipe(lid, int(hit['id']), api.ChallengeInput(kind='no-headshot'), self.session, alice)
+        self.assertEqual(shooter.exception.status_code, 403)
