@@ -130,7 +130,8 @@ function realisticShot(ctx: BaseAudioContext) {
   slide.start(t + 0.07)
 }
 
-export const SHOT_SOUNDS: { id: string; name: string; play?: (ctx: BaseAudioContext) => void }[] = [
+/** `hidden` sounds can't be picked; the game assigns them (last place gets "dud"). */
+export const SHOT_SOUNDS: { id: string; name: string; play?: (ctx: BaseAudioContext) => void; hidden?: boolean }[] = [
   { id: 'realistic', name: 'Realistic', play: realisticShot },
   {
     id: 'classic', name: 'Classic', play: (ctx) => {
@@ -172,12 +173,24 @@ export const SHOT_SOUNDS: { id: string; name: string; play?: (ctx: BaseAudioCont
       play(noise(ctx, 0.1, (p) => 1 - p), t, 0.1, filter(ctx, 'highpass', 2000), fade(ctx, 0.2, 0.1, t))
     },
   },
+  {
+    // Last place's gun: a sputtering misfire, then a sad "womp womp womp-wahh".
+    id: 'dud', name: 'Dud', hidden: true, play: (ctx) => {
+      const t = ctx.currentTime
+      play(noise(ctx, 0.02, (p) => 1 - p), t, 0.02, filter(ctx, 'highpass', 2500), fade(ctx, 0.5, 0.02, t))
+      play(noise(ctx, 0.15, (p) => (1 - p) ** 2), t + 0.04, 0.15, filter(ctx, 'lowpass', 600), fade(ctx, 0.3, 0.15, t + 0.04))
+      const notes: [number, number, number, number][] = [[0.25, 294, 277, 0.22], [0.5, 277, 262, 0.22], [0.75, 262, 196, 0.55]]
+      for (const [at, from, to, len] of notes) {
+        play(tone(ctx, 'triangle', from, to, len, t + at), t + at, len, filter(ctx, 'lowpass', 1400), fade(ctx, 0.35, len, t + at))
+      }
+    },
+  },
   { id: 'off', name: 'Off' },
 ]
 
 const soundPref = createPreference<{ shot: string }>('snipe:sound', (saved) => {
   const shot = (saved as { shot?: string } | null)?.shot
-  return { shot: SHOT_SOUNDS.some((s) => s.id === shot) ? shot! : 'realistic' }
+  return { shot: SHOT_SOUNDS.some((s) => s.id === shot && !s.hidden) ? shot! : 'realistic' }
 })
 
 /** The player's gunshot sound, saved on this device. "Off" silences every effect. */
@@ -244,7 +257,8 @@ function buzz() {
 }
 
 /** Everything that happens the instant a shot fires. */
-export function bang() {
+export function bang(forcedSound?: string) {
   buzz()
-  playShot()
+  // A forced sound (last place's "dud") replaces the player's choice, but Off still mutes.
+  playShot(forcedSound && soundOn() ? forcedSound : undefined)
 }

@@ -10,7 +10,7 @@ export function CrosshairPicker() {
         <Crosshair size={88} />
       </div>
       <div className="crosshair-styles" role="radiogroup" aria-label="Crosshair style">
-        {CROSSHAIRS.map((c) => (
+        {CROSSHAIRS.filter((c) => !c.hidden).map((c) => (
           <button key={c.id} role="radio" aria-checked={choice.style === c.id}
             className={choice.style === c.id ? 'crosshair-option selected' : 'crosshair-option'}
             onClick={() => setChoice({ style: c.id })}>

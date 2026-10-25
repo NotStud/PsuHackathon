@@ -5,7 +5,7 @@ export function SoundPicker() {
   const [choice, setChoice] = useShotSound()
   return (
     <div className="sound-picker" role="radiogroup" aria-label="Gunshot sound">
-      {SHOT_SOUNDS.map((s) => (
+      {SHOT_SOUNDS.filter((s) => !s.hidden).map((s) => (
         <button key={s.id} role="radio" aria-checked={choice.shot === s.id}
           className={choice.shot === s.id ? 'sound-option selected' : 'sound-option'}
           onClick={() => {

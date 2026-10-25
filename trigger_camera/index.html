@@ -196,8 +196,9 @@
 
       // Grab the sharp pre-flick frame before the buffer is released.
       const frame = await canvasToBlob(cam.frameAt(steadyAt));
+      const startedAt = cam.recordingStartedAt;
       const clip = await cam.stopRecording(800);
-      const shotAt = (firedAt - cam.recordingStartedAt) / 1000;  // seconds into the clip
+      const shotAt = (firedAt - startedAt) / 1000;  // seconds into the clip
 
       const meta = {
         request_id: crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random(),
