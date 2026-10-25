@@ -10,25 +10,16 @@ const POSE_MODEL = 'https://storage.googleapis.com/mediapipe-models/pose_landmar
 
 /** Side of the square we zoom into around the crosshair, as a fraction of the photo's short side. */
 const ZOOM = 0.6
-/**
- * Radius of the dot at the crosshair's center, as a fraction of the photo's short
- * side. A hit needs the exact center on a person AND most of this dot, so one
- * misjudged pixel at someone's edge can't decide the shot.
- */
-const AIM_RADIUS = 0.008
-/** Share of that dot that must be on a person. */
-const HIT_COVERAGE = 0.5
 /** Highlight color for detected people in the hit photo. */
 const TINT = [34, 197, 94, 110]  // green, semi-transparent
 /** Outline color for detected heads. */
 const HEAD_COLOR = '#facc15'
 
 export interface PersonCheck {
+  /** The pixel at the very center of the crosshair is on a person. */
   hit: boolean
   /** A hit whose crosshair was inside someone's head. */
   headshot: boolean
-  /** Fraction (0–1) of the dot under the crosshair that was on a person. */
-  coverage: number
   /** The hit photo with detected people (and heads) highlighted, as a JPEG data URL. */
   highlighted: string
 }
@@ -147,19 +138,8 @@ export async function checkPerson(photo: string): Promise<PersonCheck> {
     const person = model.getLabels().indexOf('person')
     const { width: mw, height: mh } = mask
 
-    // Share of the dot under the crosshair (a small circle at the crop's center) that is a person.
-    const r = (AIM_RADIUS / ZOOM) * mw
-    let inZone = 0, onPerson = 0
-    for (let y = Math.floor(mh / 2 - r); y <= Math.ceil(mh / 2 + r); y++) {
-      for (let x = Math.floor(mw / 2 - r); x <= Math.ceil(mw / 2 + r); x++) {
-        if ((x - mw / 2) ** 2 + (y - mh / 2) ** 2 > r * r) continue
-        inZone++
-        if (labels[y * mw + x] === person) onPerson++
-      }
-    }
-    const coverage = inZone ? onPerson / inZone : 0
-    const centerOnPerson = labels[Math.floor(mh / 2) * mw + Math.floor(mw / 2)] === person
-    const hit = centerOnPerson && coverage >= HIT_COVERAGE
+    // Hit only if the single pixel at the very center of the crosshair is on a person.
+    const hit = labels[Math.floor(mh / 2) * mw + Math.floor(mw / 2)] === person
 
     // Headshot: the crosshair (photo center) inside any detected head. Without the
     // pose model we just can't call headshots; hit / miss still works.
@@ -188,7 +168,7 @@ export async function checkPerson(photo: string): Promise<PersonCheck> {
       ctx.stroke()
     }
 
-    return { hit, headshot, coverage, highlighted: out.toDataURL('image/jpeg', 0.85) }
+    return { hit, headshot, highlighted: out.toDataURL('image/jpeg', 0.85) }
   } finally {
     result.close()
   }
