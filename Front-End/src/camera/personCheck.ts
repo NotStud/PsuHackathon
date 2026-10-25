@@ -1,19 +1,24 @@
 // Decides, on the device, whether the crosshair was on a person (MediaPipe's
 // DeepLab v3 segmenter labels every pixel; one class is "person") and whether it
-// was on their head (MediaPipe's pose landmarker finds nose, eyes, ears, shoulders).
+// was on their head (MediaPipe's pose landmarker finds nose, eyes, ears, shoulders;
+// MediaPipe's hair segmenter, run on a close-up of each head, finds the hair).
 import { ImageSegmenter, PoseLandmarker, type NormalizedLandmark } from '@mediapipe/tasks-vision'
 import wasmLoaderPath from '@mediapipe/tasks-vision/vision_wasm_internal.js?url'
 import wasmBinaryPath from '@mediapipe/tasks-vision/vision_wasm_internal.wasm?url'
 
 const SEGMENT_MODEL = 'https://storage.googleapis.com/mediapipe-models/image_segmenter/deeplab_v3/float32/1/deeplab_v3.tflite'
 const POSE_MODEL = 'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task'
+const HAIR_MODEL = 'https://storage.googleapis.com/mediapipe-models/image_segmenter/hair_segmenter/float32/1/hair_segmenter.tflite'
 
 /** Side of the square we zoom into around the crosshair, as a fraction of the photo's short side. */
 const ZOOM = 0.6
 /** Highlight color for detected people in the hit photo. */
 const TINT = [34, 197, 94, 110]  // green, semi-transparent
-/** Outline color for detected heads. */
+/** Outline color for detected heads, and tint for detected hair. */
 const HEAD_COLOR = '#facc15'
+const HAIR_TINT = [250, 204, 21, 120]  // yellow, semi-transparent
+/** The close-up of a head is this many head zones wide, so the hair model sees all the hair. */
+const HAIR_CROP = 1.6
 
 export interface PersonCheck {
   /** The pixel at the very center of the crosshair is on a person (or it's a headshot). */
@@ -27,6 +32,20 @@ export interface PersonCheck {
 const fileset = { wasmLoaderPath, wasmBinaryPath }
 let segmenter: Promise<ImageSegmenter> | null = null
 let poser: Promise<PoseLandmarker> | null = null
+let hairSegmenter: Promise<ImageSegmenter> | null = null
+
+function loadHairSegmenter() {
+  hairSegmenter ??= ImageSegmenter.createFromOptions(fileset, {
+    baseOptions: { modelAssetPath: HAIR_MODEL, delegate: 'CPU' },
+    runningMode: 'IMAGE',
+    outputCategoryMask: true,
+    outputConfidenceMasks: false,
+  }).catch((err) => {
+    hairSegmenter = null
+    throw err
+  })
+  return hairSegmenter
+}
 
 function loadSegmenter() {
   segmenter ??= ImageSegmenter.createFromOptions(fileset, {
@@ -53,9 +72,44 @@ function loadPoser() {
   return poser
 }
 
-/** Start downloading the models early (~2.7 MB + ~5.8 MB, cached after the first time). */
+/** Start downloading the models early (~2.7 + 5.8 + 0.8 MB, cached after the first time). */
 export function preloadPersonCheck() {
-  return Promise.all([loadSegmenter(), loadPoser().catch(() => null)])
+  return Promise.all([loadSegmenter(), loadPoser().catch(() => null), loadHairSegmenter().catch(() => null)])
+}
+
+/** Hair found in a close-up of one head: a mask over a square of the photo. */
+interface HairPatch { x: number; y: number; size: number; mask: Uint8Array; width: number; height: number; hair: number }
+
+/**
+ * Runs the hair model on a close-up of `head` (the model is made for selfie-like
+ * close-ups, so we zoom in until the head fills the frame).
+ */
+function findHair(model: ImageSegmenter, img: HTMLImageElement, head: Head): HairPatch {
+  const size = Math.max(head.rx, head.ry) * 2 * HAIR_CROP
+  const x = head.cx - size / 2, y = head.cy - size / 2
+  const close = document.createElement('canvas')
+  close.width = close.height = 512
+  close.getContext('2d')!.drawImage(img, x, y, size, size, 0, 0, 512, 512)
+  const result = model.segment(close)
+  try {
+    const mask = result.categoryMask!
+    const index = model.getLabels().indexOf('hair')
+    return { x, y, size, mask: mask.getAsUint8Array().slice(), width: mask.width, height: mask.height, hair: index >= 0 ? index : 1 }
+  } finally {
+    result.close()
+  }
+}
+
+/** Is there hair at (or within a hair's breadth of) a photo point? */
+function hairAt(p: HairPatch, px: number, py: number) {
+  const u = ((px - p.x) / p.size) * p.width, v = ((py - p.y) / p.size) * p.height
+  const r = p.width * 0.015
+  for (let y = Math.max(0, Math.floor(v - r)); y <= Math.min(p.height - 1, Math.ceil(v + r)); y++) {
+    for (let x = Math.max(0, Math.floor(u - r)); x <= Math.min(p.width - 1, Math.ceil(u + r)); x++) {
+      if ((x - u) ** 2 + (y - v) ** 2 <= r * r && p.mask[y * p.width + x] === p.hair) return true
+    }
+  }
+  return false
 }
 
 function loadImage(src: string) {
@@ -149,7 +203,7 @@ function findHeads(model: PoseLandmarker, img: HTMLImageElement, crop: HTMLCanva
 
 /** Is the center of `photo` (a data URL; the crosshair is always at the center) on a person, and on their head? */
 export async function checkPerson(photo: string): Promise<PersonCheck> {
-  const [[model, posing], img] = await Promise.all([preloadPersonCheck(), loadImage(photo)])
+  const [[model, posing, hairModel], img] = await Promise.all([preloadPersonCheck(), loadImage(photo)])
   const short = Math.min(img.width, img.height)
 
   // Zoom into a square around the crosshair, so far-away people still get enough
@@ -188,10 +242,19 @@ export async function checkPerson(photo: string): Promise<PersonCheck> {
     // still works.
     const heads = posing ? findHeads(posing, img, crop, { x: left, y: top, w: side, h: side }) : []
     const aimX = img.width / 2, aimY = img.height / 2
-    const headshot = heads.some((h) =>
-      ((aimX - h.cx) / h.rx) ** 2 + ((aimY - h.cy) / h.ry) ** 2 <= 1 &&
-      (h.neckY === undefined || aimY <= h.neckY) &&
+    const aboveNeck = (h: Head) => h.neckY === undefined || aimY <= h.neckY
+    const inZone = heads.some((h) =>
+      ((aimX - h.cx) / h.rx) ** 2 + ((aimY - h.cy) / h.ry) ** 2 <= 1 && aboveNeck(h) &&
       (centerOnPerson || personWithin((HEAD_EDGE * h.rx / HAIR) * (mw / side))))
+
+    // Hair, however big: run the hair model on close-ups of the heads near the
+    // crosshair, and count the shot if the crosshair is on that hair (above the neck).
+    const nearby = heads.filter((h) =>
+      Math.abs(aimX - h.cx) <= Math.max(h.rx, h.ry) * HAIR_CROP && Math.abs(aimY - h.cy) <= Math.max(h.rx, h.ry) * HAIR_CROP)
+    const hair = hairModel ? nearby.map((h) => ({ head: h, patch: findHair(hairModel, img, h) })) : []
+    const onHair = hair.some(({ head, patch }) => aboveNeck(head) && hairAt(patch, aimX, aimY))
+
+    const headshot = inZone || onHair
     const hit = centerOnPerson || headshot
 
     // Paint detected people (and heads) onto the photo so the player can see what counted.
@@ -207,6 +270,15 @@ export async function checkPerson(photo: string): Promise<PersonCheck> {
     const ctx = out.getContext('2d')!
     ctx.drawImage(img, 0, 0)
     ctx.drawImage(tint, left, top, side, side)
+    for (const { patch } of hair) {
+      const hairTint = document.createElement('canvas')
+      hairTint.width = patch.width
+      hairTint.height = patch.height
+      const hp = new ImageData(patch.width, patch.height)
+      patch.mask.forEach((label, i) => { if (label === patch.hair) hp.data.set(HAIR_TINT, i * 4) })
+      hairTint.getContext('2d')!.putImageData(hp, 0, 0)
+      ctx.drawImage(hairTint, patch.x, patch.y, patch.size, patch.size)
+    }
     ctx.strokeStyle = HEAD_COLOR
     ctx.lineWidth = Math.max(2, short / 200)
     // Outline exactly what counts as a headshot: the hair-inclusive ellipse, cut at the neck.
