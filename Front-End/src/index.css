@@ -981,3 +981,7 @@ img.avatar {
   background: var(--surface-2);
   color: var(--text);
 }
+.killcam-hint {
+  flex-basis: 100%;
+  margin: 0;
+}

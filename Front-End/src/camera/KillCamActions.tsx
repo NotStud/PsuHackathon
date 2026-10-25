@@ -4,6 +4,13 @@ import { useCrosshair } from '../crosshairs'
 import { gameAudio, shotSoundBuffer, useShotSound } from './feedback'
 import { canRenderKillCam, renderKillCam } from './renderKillCam'
 
+// Websites can't write to the Photos app directly. On iPhone the share sheet's "Save Video"
+// puts it in the camera roll (a plain download lands in Files). On Android, downloaded videos
+// go to the Download folder, which the Gallery and Google Photos apps show automatically.
+const isIOS =
+  /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+const isAndroid = /Android/i.test(navigator.userAgent)
+
 // One render per shot, crosshair and gunshot sound, shared by every screen that offers the download.
 const rendered = new WeakMap<Blob, Map<string, Promise<Blob>>>()
 
@@ -24,9 +31,9 @@ function killCamVideo(clip: Blob, shotAt: number, crosshairSvg: string, soundId:
 }
 
 /**
- * Save the kill cam (crosshair, slow motion and gunshot sound included) to the device, or send
- * it through the phone's share sheet where supported. Rendering starts as soon as this
- * shows, because phones only open the share sheet straight after a tap.
+ * Save the kill cam (crosshair, slow motion and gunshot sound included) to the phone's camera
+ * roll (or download it on a computer), or send it through the share sheet. Rendering starts as
+ * soon as this shows, because phones only open the share sheet straight after a tap.
  */
 export function KillCamActions({ clip, shotAt }: { clip: Blob; shotAt: number }) {
   const [choice] = useCrosshair()
@@ -84,20 +91,30 @@ export function KillCamActions({ clip, shotAt }: { clip: Blob; shotAt: number })
     }
   }
 
+  // iPhone: the share sheet is the only way into Photos ("Save Video"); it also covers sharing.
+  const saveViaShareSheet = isIOS && canShare
+
   return (
     <div className="killcam-actions">
       {/* The crosshair to burn into the video, in the player's chosen style and color. */}
       <span ref={svgHolder} hidden>
         <Crosshair size={256} />
       </span>
-      <button type="button" className="button" disabled={!video} onClick={download}>
-        {video ? 'Download kill cam' : 'Preparing kill cam…'}
+      <button
+        type="button"
+        className="button"
+        disabled={!video}
+        onClick={saveViaShareSheet ? () => void share() : download}
+      >
+        {!video ? 'Preparing kill cam…' : isIOS || isAndroid ? 'Save to camera roll' : 'Download kill cam'}
       </button>
-      {canShare && (
+      {canShare && !saveViaShareSheet && (
         <button type="button" className="button" onClick={() => void share()}>
           Share
         </button>
       )}
+      {video && saveViaShareSheet && <p className="muted small killcam-hint">Tap “Save Video” to put it in Photos, or send it from the same menu.</p>}
+      {video && isAndroid && <p className="muted small killcam-hint">Saves to your Gallery (Download album).</p>}
       {error && <p className="error small">{error}</p>}
     </div>
   )
