@@ -298,7 +298,7 @@ export function SnipePage() {
                   onClick={() => setTargetId(m.user.id)}
                   aria-pressed={targetId === m.user.id}
                 >
-                  <Avatar user={m.user} size={48} rim={rimFor(m)} />
+                  <Avatar user={m.user} size={48} rim={rimFor(m, board.data)} />
                   <span>{m.user.displayName}</span>
                   <RuleBadges member={m} league={league} />
                   {m.cooldownUntil && <CooldownBadge until={m.cooldownUntil} frozenAt={firedAt ?? undefined} />}

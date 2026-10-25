@@ -1075,3 +1075,17 @@ img.avatar {
   filter: drop-shadow(0 1px 1px rgb(0 0 0 / 0.35));
   pointer-events: none;
 }
+/* Easy target (last place): brown rim, with a target badge at the bottom-right. */
+.avatar-frame-easy-target .avatar { box-shadow: 0 0 0 var(--rim) #8b5a2b; }
+.avatar-target {
+  position: absolute;
+  right: calc(var(--rim) * -1.5);
+  bottom: calc(var(--rim) * -1.5);
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: #8b5a2b;
+  color: #fff;
+  box-shadow: 0 0 0 2px var(--surface);
+  pointer-events: none;
+}

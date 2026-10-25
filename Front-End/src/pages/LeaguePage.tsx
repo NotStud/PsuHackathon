@@ -172,7 +172,7 @@ function Leaderboard({
       {members?.map((m, i) => (
         <li key={m.user.id} className={m.user.id === currentUserId ? 'row row-me' : 'row'}>
           <span className="rank">{i + 1}</span>
-          <Avatar user={m.user} rim={rimFor(m)} />
+          <Avatar user={m.user} rim={rimFor(m, members)} />
           <div className="row-main">
             <span className="row-name">{m.user.displayName}</span>
             <span className="muted small">

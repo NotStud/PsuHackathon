@@ -1,7 +1,7 @@
 import type { CSSProperties } from 'react'
 import type { Rim } from '../rims'
 import type { User } from '../types'
-import { CrownIcon } from './Icons'
+import { CrownIcon, TargetIcon } from './Icons'
 
 export function Avatar({ user, size = 40, rim }: { user: User; size?: number; rim?: Rim }) {
   const face = user.avatarUrl ? (
@@ -19,12 +19,17 @@ export function Avatar({ user, size = 40, rim }: { user: User; size?: number; ri
 
   // The rim is drawn around the face without changing its size, so rows stay aligned.
   return (
-    <span className={`avatar-frame avatar-frame-${rim}`} title={rim === 'king' ? 'King: first place' : undefined}
+    <span className={`avatar-frame avatar-frame-${rim}`} title={rim === 'king' ? 'King: first place' : 'Easy target: last place'}
       style={{ width: size, height: size, '--rim': `${Math.max(2, Math.round(size * 0.07))}px` } as CSSProperties}>
       {face}
       {rim === 'king' && (
         <CrownIcon className="avatar-crown" width={size * 0.55} height={size * 0.55}
           style={{ top: -size * 0.38 }} fill="currentColor" strokeWidth={1.5} aria-hidden />
+      )}
+      {rim === 'easy-target' && (
+        <span className="avatar-target" style={{ width: size * 0.42, height: size * 0.42 }} aria-hidden>
+          <TargetIcon width={size * 0.32} height={size * 0.32} strokeWidth={2.5} />
+        </span>
       )}
     </span>
   )
