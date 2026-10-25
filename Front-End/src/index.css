@@ -852,34 +852,46 @@ ol {
 }
 
 /* ---------- Person check verdict on the hit photo ---------- */
+/* Very top-right corner, level with the close button / league picker and drawn above that bar. */
 .shot-verdict {
   position: absolute;
+  z-index: 3;
   right: 10px;
-  bottom: 8px;
-  padding: 3px 10px;
+  top: calc(env(safe-area-inset-top) + 24px);
+  padding: 2px 8px;
   border-radius: 999px;
   background: rgb(0 0 0 / 0.6);
-  font-size: 13px;
+  font-size: 11px;
   font-weight: 800;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.06em;
 }
 .shot-verdict.hit { background: #16a34a; }
 .shot-verdict.miss { background: var(--accent); }
 .shot-verdict.headshot { background: #facc15; color: #000; }
-.highlight-toggle {
+/* HIT PHOTO label (left) and the Highlight toggle (far right), in one row along the bottom. */
+.shot-footer {
   position: absolute;
+  left: 10px;
   right: 10px;
-  bottom: 38px;
-  padding: 4px 10px;
-  border: 1px solid rgb(255 255 255 / 0.5);
+  bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.shot-footer .shot-label { position: static; }
+.highlight-toggle {
+  flex-shrink: 0;
+  margin-left: auto;  /* pushed to the far right of the row */
+  padding: 2px 7px;
+  border: none;
   border-radius: 999px;
-  background: rgb(0 0 0 / 0.55);
+  background: var(--accent);  /* red = off */
   color: #fff;
-  font-size: 12px;
+  font-size: 10px;
   font-weight: 700;
   cursor: pointer;
 }
-.highlight-toggle.on { border-color: #22c55e; color: #4ade80; }
+.highlight-toggle.on { background: #16a34a; }  /* green = on */
 
 /* ---------- Custom crosshairs ---------- */
 /* A thin dark outline keeps any color readable over bright or dark scenes. */
