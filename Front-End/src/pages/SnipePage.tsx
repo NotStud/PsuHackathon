@@ -9,6 +9,7 @@ import { bang, playHit, playReload } from '../camera/feedback'
 import type { FireInfo } from '../../../trigger_camera/trigger.js'
 import { Avatar } from '../components/Avatar'
 import { CooldownBadge } from '../components/CooldownBadge'
+import { RuleBadges } from '../components/RuleBadges'
 import { CloseIcon, CrosshairIcon } from '../components/Icons'
 import { Crosshair } from '../components/Crosshair'
 import { useAsync, useNow } from '../hooks'
@@ -64,9 +65,11 @@ export function SnipePage() {
   const [shot, setShot] = useState<Shot | null>(null)
   const [flash, setFlash] = useState(false)
   const [targetId, setTargetId] = useState<string | null>(null)
+  // One ID per shot, so a retried send can't record the same snipe twice.
+  const [requestId, setRequestId] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [done, setDone] = useState<Member | null>(null)
+  const [done, setDone] = useState<{ member: Member; points: number } | null>(null)
 
   const now = useNow()
   // Players you can hit right now come first.
@@ -75,8 +78,13 @@ export function SnipePage() {
     .map((m) => ({ ...m, cooldownUntil: m.cooldownUntil && Date.parse(m.cooldownUntil) > now ? m.cooldownUntil : null }))
     .sort((a, b) => Number(Boolean(a.cooldownUntil)) - Number(Boolean(b.cooldownUntil)))
   const target = targets.find((m) => m.user.id === targetId)
+  // Shooter cooldown: after a snipe you have to wait before the next one.
+  const myRow = board.data?.find((m) => me.data && m.user.id === me.data.id)
+  const reloadUntil =
+    myRow?.shooterCooldownUntil && Date.parse(myRow.shooterCooldownUntil) > now ? myRow.shooterCooldownUntil : null
 
-  const canShoot = cameraReady && Boolean(league) && !board.loading && !board.error && Boolean(me.data) && !shot
+  const canShoot =
+    cameraReady && Boolean(league) && !board.loading && !board.error && Boolean(me.data) && !shot && !reloadUntil
 
   // Record while the trigger is armed, so the kill cam has the run-up to the shot.
   useEffect(() => {
@@ -96,6 +104,7 @@ export function SnipePage() {
       const taken = await cameraRef.current?.takeShot(fired)
       if (!taken) throw new Error('Camera is not ready. Try again.')
       setShot(taken)
+      setRequestId(crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to capture photo.')
     } finally { capturing.current = false }
@@ -106,11 +115,11 @@ export function SnipePage() {
     setSubmitting(true)
     setError(null)
     try {
-      await submitSnipe(league.id, target.user.id, shot.photo)
+      const snipe = await submitSnipe(league.id, target.user.id, shot.photo, requestId ?? undefined)
       saveLastLeague(league.id)
       navigator.vibrate?.([30, 50, 30])
       playHit()
-      setDone(target)
+      setDone({ member: target, points: snipe.points })
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     } finally {
@@ -120,6 +129,7 @@ export function SnipePage() {
 
   function reset() {
     setShot(null)
+    setRequestId(null)
     setTargetId(null)
     setError(null)
     setDone(null)
@@ -177,6 +187,11 @@ export function SnipePage() {
           </div>
           {error && <p className="snipe-error" role="alert">{error}</p>}
           <div className="snipe-bottom">
+            {reloadUntil && (
+              <p className="snipe-notice">
+                Reloading: you can snipe again in <CooldownBadge until={reloadUntil} kind="reloading" />
+              </p>
+            )}
             {leagues.data?.length === 0 ? (
               <Link to="/leagues" className="button button-primary">
                 Join a league to start sniping
@@ -210,6 +225,7 @@ export function SnipePage() {
                 >
                   <Avatar user={m.user} size={48} />
                   <span>{m.user.displayName}</span>
+                  <RuleBadges member={m} league={league} />
                   {m.cooldownUntil && <CooldownBadge until={m.cooldownUntil} />}
                 </button>
               </li>
@@ -233,7 +249,7 @@ export function SnipePage() {
           </div>
           <h1>Sniped!</h1>
           <p>
-            <strong>{done.user.displayName}</strong> · +{league.pointsPerSnipe} points
+            <strong>{done.member.user.displayName}</strong> · +{done.points} points
           </p>
           <p className="small">They're safe for the next {league.cooldownMinutes} minutes.</p>
           <div className="button-row">

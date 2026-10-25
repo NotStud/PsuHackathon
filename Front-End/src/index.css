@@ -11,6 +11,8 @@
   --accent-soft: #fee2e2;
   --cooldown: #2563eb;
   --cooldown-soft: #dbeafe;
+  --king: #a16207;
+  --king-soft: #fef3c7;
   --error: #dc2626;
 
   --radius: 14px;
@@ -36,6 +38,8 @@
     --accent-soft: #3b1414;
     --cooldown: #60a5fa;
     --cooldown-soft: #172554;
+    --king: #facc15;
+    --king-soft: #3f2f05;
     --error: #f87171;
   }
 }
@@ -387,7 +391,7 @@ ol {
 /* ---------- Feed ---------- */
 .feed-item {
   display: grid;
-  grid-template-columns: auto 1fr;
+  grid-template-columns: auto 1fr auto;
   align-items: center;
   gap: 10px;
 }
@@ -717,6 +721,124 @@ ol {
   animation: blink 1s steps(2) infinite;
 }
 @keyframes blink { 50% { opacity: 0; } }
+
+/* ---------- Game rules: bounty, king, reloading, challenges ---------- */
+.row-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+}
+.row-badges:empty {
+  display: none;
+}
+.badge-king {
+  background: var(--king-soft);
+  color: var(--king);
+}
+.badge-bounty {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.badge-reload {
+  background: var(--surface-2);
+  color: var(--text-muted);
+}
+.badge-challenged {
+  background: var(--king-soft);
+  color: var(--king);
+}
+
+.bounty-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.bounty-banner p {
+  color: var(--text);
+}
+
+.snipe-points {
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+.feed-item.reversed .snipe-points {
+  color: var(--text-muted);
+  font-weight: 600;
+  font-size: 0.85rem;
+}
+.feed-item.reversed > p {
+  text-decoration: line-through;
+  color: var(--text-muted);
+}
+.feed-challenge {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+.feed-challenge:empty {
+  display: none;
+}
+.challenge-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  width: 100%;
+}
+.challenge-form input {
+  flex: 1 1 100%;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  font-size: 1rem;
+}
+.link-button {
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--accent);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.rules {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.rules summary {
+  font-weight: 600;
+  cursor: pointer;
+}
+.rules[open] summary {
+  margin-bottom: 12px;
+}
+.rules .field + .field {
+  margin-top: 12px;
+}
+
+.target .badge {
+  font-size: 0.7rem;
+}
+.snipe-notice {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: rgb(0 0 0 / 0.55);
+  color: #fff;
+  font-size: 0.9rem;
+}
 
 /* ---------- Custom crosshairs ---------- */
 /* A thin dark outline keeps any color readable over bright or dark scenes. */

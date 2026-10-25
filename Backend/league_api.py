@@ -75,6 +75,38 @@ def get_bounty_player_id(league: League, at_time: datetime, session: Session) ->
     return member_ids[min(index, len(member_ids) - 1)]
 
 
+def bounty_ends_at(league: League, at_time: datetime, session: Session) -> Optional[datetime]:
+    """When the current bounty slot ends and the next member becomes the bounty."""
+    count = len(session.exec(select(LeagueMember.player_id).where(LeagueMember.league_id == league.id)).all())
+    total_seconds = league.round_duration_days * 86400
+    if not count or total_seconds <= 0:
+        return None
+    slot = total_seconds / count
+    elapsed = max(0.0, (at_time - league.created_at).total_seconds())
+    return league.created_at + timedelta(seconds=(int(elapsed // slot) + 1) * slot)
+
+
+def refresh_timers(league: League, player_ids, session: Session):
+    """Rebuild immunity and shooter cooldowns from the snipes that still count (as game.py does),
+    so reversing one snipe never clears a timer that a later valid snipe set."""
+    reversed_ids = select(SnipeChallenge.snipe_id).where(SnipeChallenge.status == "approved")
+    valid = select(LeagueSnipe).where(LeagueSnipe.league_id == league.id, LeagueSnipe.id.not_in(reversed_ids))
+
+    def latest(query):
+        return session.exec(query.order_by(LeagueSnipe.created_at.desc()).limit(1)).first()
+
+    for player_id in player_ids:
+        member = session.get(LeagueMember, (league.id, player_id))
+        if not member:
+            continue
+        last_hit = latest(valid.where(LeagueSnipe.target_id == player_id))
+        last_shot = latest(valid.where(LeagueSnipe.shooter_id == player_id))
+        member.out_until = last_hit.created_at + timedelta(minutes=league.cooldown_minutes) if last_hit else None
+        member.cooldown_until = (last_shot.created_at + timedelta(minutes=league.shooter_cooldown_minutes)
+                                 if last_shot else None)
+        session.add(member)
+
+
 def compute_league_scores_and_points(league: League, session: Session):
     """
     Chronologically evaluates all valid snipes to calculate individual member scores
@@ -153,6 +185,7 @@ def league_json(league: League, session: Session):
     ).all()
     now = utc_now()
     bounty_id = get_bounty_player_id(league, now, session)
+    bounty_until = bounty_ends_at(league, now, session)
 
     return dict(
         id=str(league.id),
@@ -165,6 +198,7 @@ def league_json(league: League, session: Session):
         kingBonusPoints=league.king_bonus_points,
         roundDurationDays=league.round_duration_days,
         bountyPlayerId=str(bounty_id) if bounty_id else None,
+        bountyEndsAt=bounty_until.isoformat() + "Z" if bounty_until else None,
         memberIds=[str(pid) for pid in ids]
     )
 
@@ -430,14 +464,9 @@ def approve_challenge(league_id: int, snipe_id: int, session: SessionDep, player
     challenge.approved_at = utc_now()
     session.add(challenge)
 
-    # Clear target immunity & shooter cooldown from the reversed hit
-    target = session.get(LeagueMember, (league_id, hit.target_id))
-    if target:
-        target.out_until = None
-    shooter = session.get(LeagueMember, (league_id, hit.shooter_id))
-    if shooter:
-        shooter.cooldown_until = None
-
+    # Timers fall back to whatever the remaining valid snipes say.
+    session.flush()
+    refresh_timers(league, (hit.target_id, hit.shooter_id), session)
     session.flush()
 
     # Recalculate round scores dynamically

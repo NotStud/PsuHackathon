@@ -1,14 +1,15 @@
-import { useState } from 'react'
+import { useState, type FormEvent } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { getFeed, getLeaderboard, getLeague } from '../api'
+import { approveChallenge, challengeSnipe, getFeed, getLeaderboard, getLeague } from '../api'
 import { getCurrentUser } from '../api'
 import { Avatar } from '../components/Avatar'
 import { CooldownBadge } from '../components/CooldownBadge'
-import { CrosshairIcon } from '../components/Icons'
+import { CrosshairIcon, TargetIcon } from '../components/Icons'
 import { PageHeader } from '../components/PageHeader'
-import { timeAgo } from '../format'
-import { useAsync } from '../hooks'
-import type { Member, Snipe } from '../types'
+import { RuleBadges } from '../components/RuleBadges'
+import { timeAgo, timeUntil } from '../format'
+import { useAsync, useNow } from '../hooks'
+import type { League, Member, Snipe } from '../types'
 
 type Tab = 'leaderboard' | 'feed'
 
@@ -20,18 +21,20 @@ export function LeaguePage() {
   const board = useAsync(() => getLeaderboard(leagueId), [leagueId])
   const feed = useAsync(() => getFeed(leagueId), [leagueId])
 
+  // Challenges and reversals change points, timers and the feed.
+  function refresh() {
+    board.reload()
+    feed.reload()
+  }
+
   if (league.error) return <p className="error">{league.error}</p>
 
   return (
     <>
       <PageHeader title={league.data?.name ?? 'League'} back />
 
-      {league.data && (
-        <p className="muted small league-meta">
-          Code <span className="code">{league.data.joinCode}</span> ·{' '}
-          {league.data.pointsPerSnipe} pts per snipe · {league.data.cooldownMinutes} min cooldown
-        </p>
-      )}
+      {league.data && <LeagueRulesLine league={league.data} />}
+      {league.data && <BountyBanner league={league.data} members={board.data} />}
 
       <Link to={`/snipe?league=${leagueId}`} className="button button-primary button-block">
         <CrosshairIcon width={20} height={20} />
@@ -49,15 +52,63 @@ export function LeaguePage() {
 
       {(board.error || feed.error) && <p className="error">{board.error || feed.error}</p>}
       {tab === 'leaderboard' ? (
-        <Leaderboard members={board.data} loading={board.loading} currentUserId={me.data?.id} />
+        <Leaderboard members={board.data} loading={board.loading} currentUserId={me.data?.id} league={league.data} />
       ) : (
-        <Feed snipes={feed.data} members={board.data} loading={feed.loading} />
+        <Feed
+          leagueId={leagueId}
+          snipes={feed.data}
+          members={board.data}
+          loading={feed.loading}
+          currentUserId={me.data?.id}
+          onChange={refresh}
+        />
       )}
     </>
   )
 }
 
-function Leaderboard({ members, loading, currentUserId }: { members: Member[] | null; loading: boolean; currentUserId?: string }) {
+function LeagueRulesLine({ league }: { league: League }) {
+  const parts = [
+    `${league.pointsPerSnipe} pts per snipe`,
+    league.bountyBonusPoints > 0 && `bounty +${league.bountyBonusPoints}`,
+    league.kingBonusPoints > 0 && `king +${league.kingBonusPoints}`,
+    `${league.cooldownMinutes} min immunity`,
+    league.shooterCooldownMinutes > 0 && `${league.shooterCooldownMinutes} min between shots`,
+  ].filter(Boolean)
+  return (
+    <p className="muted small league-meta">
+      Code <span className="code">{league.joinCode}</span> · {parts.join(' · ')}
+    </p>
+  )
+}
+
+function BountyBanner({ league, members }: { league: League; members: Member[] | null }) {
+  const now = useNow(30_000)
+  const bounty = members?.find((m) => m.user.id === league.bountyPlayerId)
+  if (!bounty) return null
+  return (
+    <div className="bounty-banner">
+      <TargetIcon width={22} height={22} />
+      <p>
+        <strong>{bounty.user.displayName}</strong> is the bounty
+        {league.bountyBonusPoints > 0 && <> · +{league.bountyBonusPoints} pts</>}
+        {league.bountyEndsAt && <span className="muted small"> · moves in {timeUntil(league.bountyEndsAt, now)}</span>}
+      </p>
+    </div>
+  )
+}
+
+function Leaderboard({
+  members,
+  loading,
+  currentUserId,
+  league,
+}: {
+  members: Member[] | null
+  loading: boolean
+  currentUserId?: string
+  league: League | null
+}) {
   if (loading && !members) return <p className="muted">Loading…</p>
   return (
     <ol className="list">
@@ -70,8 +121,12 @@ function Leaderboard({ members, loading, currentUserId }: { members: Member[] | 
             <span className="muted small">
               {m.snipes} snipes · sniped {m.timesSniped}×
             </span>
+            <span className="row-badges">
+              <RuleBadges member={m} league={league} />
+              {m.cooldownUntil && <CooldownBadge until={m.cooldownUntil} />}
+              {m.shooterCooldownUntil && <CooldownBadge until={m.shooterCooldownUntil} kind="reloading" />}
+            </span>
           </div>
-          {m.cooldownUntil && <CooldownBadge until={m.cooldownUntil} />}
           <span className="points">{m.points}</span>
         </li>
       ))}
@@ -80,13 +135,19 @@ function Leaderboard({ members, loading, currentUserId }: { members: Member[] | 
 }
 
 function Feed({
+  leagueId,
   snipes,
   members,
   loading,
+  currentUserId,
+  onChange,
 }: {
+  leagueId: string
   snipes: Snipe[] | null
   members: Member[] | null
   loading: boolean
+  currentUserId?: string
+  onChange: () => void
 }) {
   if (loading && !snipes) return <p className="muted">Loading…</p>
   if (snipes?.length === 0) return <p className="empty muted">No snipes yet. Be the first.</p>
@@ -99,16 +160,104 @@ function Feed({
         const target = userById.get(s.targetId)
         if (!sniper || !target) return null
         return (
-          <li key={s.id} className="card feed-item">
+          <li key={s.id} className={s.status === 'reversed' ? 'card feed-item reversed' : 'card feed-item'}>
             <Avatar user={sniper} size={32} />
             <p>
               <strong>{sniper.displayName}</strong> sniped <strong>{target.displayName}</strong>
               <span className="muted small"> · {timeAgo(s.createdAt)}</span>
             </p>
+            <span className="snipe-points">{s.status === 'reversed' ? 'Reversed' : `+${s.points}`}</span>
             {s.photoUrl && <img className="feed-photo" src={s.photoUrl} alt="Snipe proof" />}
+            <ChallengeControls leagueId={leagueId} snipe={s} currentUserId={currentUserId} onChange={onChange} />
           </li>
         )
       })}
     </ul>
+  )
+}
+
+/**
+ * The player who was hit can challenge a snipe; anyone else in the league (not the
+ * shooter or the target) can then approve the challenge, which reverses the snipe.
+ */
+function ChallengeControls({
+  leagueId,
+  snipe,
+  currentUserId,
+  onChange,
+}: {
+  leagueId: string
+  snipe: Snipe
+  currentUserId?: string
+  onChange: () => void
+}) {
+  const [writing, setWriting] = useState(false)
+  const [reason, setReason] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const isTarget = currentUserId === snipe.targetId
+  const isReviewer = Boolean(currentUserId) && !isTarget && currentUserId !== snipe.sniperId
+
+  async function run(action: () => Promise<unknown>) {
+    setBusy(true)
+    setError(null)
+    try {
+      await action()
+      setWriting(false)
+      onChange()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  function submitChallenge(e: FormEvent) {
+    e.preventDefault()
+    void run(() => challengeSnipe(leagueId, snipe.id, reason.trim()))
+  }
+
+  return (
+    <div className="feed-challenge">
+      {snipe.status === 'challenged' && (
+        <p className="small">
+          <span className="badge badge-challenged">Challenged</span> “{snipe.challengeReason}”
+        </p>
+      )}
+      {snipe.status === 'reversed' && snipe.challengeReason && (
+        <p className="muted small">Reversed after challenge: “{snipe.challengeReason}”</p>
+      )}
+
+      {snipe.status === 'valid' && isTarget && !writing && (
+        <button className="link-button small" onClick={() => setWriting(true)}>
+          Challenge this snipe
+        </button>
+      )}
+      {writing && (
+        <form className="challenge-form" onSubmit={submitChallenge}>
+          <input
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            placeholder="Why doesn't it count?"
+            maxLength={500}
+            required
+            autoFocus
+          />
+          <button className="button button-primary" disabled={busy || !reason.trim()}>
+            {busy ? 'Sending…' : 'Challenge'}
+          </button>
+          <button type="button" className="button" onClick={() => setWriting(false)}>
+            Cancel
+          </button>
+        </form>
+      )}
+      {snipe.status === 'challenged' && isReviewer && (
+        <button className="button" disabled={busy} onClick={() => void run(() => approveChallenge(leagueId, snipe.id))}>
+          {busy ? 'Approving…' : 'Approve challenge (reverse snipe)'}
+        </button>
+      )}
+      {error && <p className="error small">{error}</p>}
+    </div>
   )
 }
