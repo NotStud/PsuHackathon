@@ -229,7 +229,8 @@ export function SnipePage() {
       {shot && !done && (
         <div className="sheet" role="dialog" aria-label="Who did you get?">
           <div className="sheet-header">
-            <h2>{missed ? 'Missed!' : 'Who did you get?'}</h2>
+            {/* The verdict itself (HEADSHOT / HIT / MISS) only appears in the top-right badge. */}
+            <h2>{missed ? 'Try again' : 'Who did you get?'}</h2>
             <button className="button" onClick={backToStart}>
               Back to start
             </button>
@@ -270,10 +271,6 @@ export function SnipePage() {
 
       {done && league && (
         <div className="snipe-success">
-          {/* A headshot gets its own photo, faded, behind the celebration. */}
-          {shot && typeof check === 'object' && check?.headshot && (
-            <img className="success-backdrop" src={shot.photo} alt="" aria-hidden />
-          )}
           <div className="success-icon">
             <CrosshairIcon width={56} height={56} />
           </div>
