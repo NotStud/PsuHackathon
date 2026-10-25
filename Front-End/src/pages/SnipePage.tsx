@@ -5,13 +5,14 @@ import { getCurrentUser } from '../api'
 import { MotionTrigger } from '../camera/MotionTrigger'
 import { CameraView, type CameraHandle, type Shot } from '../camera/CameraView'
 import { ShotReview } from '../camera/KillCam'
-import { bang } from '../camera/feedback'
+import { bang, playHit, playReload } from '../camera/feedback'
 import type { PersonCheck } from '../camera/personCheck'
 import type { FireInfo } from '../../../trigger_camera/trigger.js'
 import { Avatar } from '../components/Avatar'
 import { CooldownBadge } from '../components/CooldownBadge'
 import { RuleBadges } from '../components/RuleBadges'
 import { CloseIcon, CrosshairIcon } from '../components/Icons'
+import { Crosshair } from '../components/Crosshair'
 import { useAsync, useNow } from '../hooks'
 import type { League, Member } from '../types'
 
@@ -100,7 +101,9 @@ export function SnipePage() {
 
   // Record while the trigger is armed, so the kill cam has the run-up to the shot.
   useEffect(() => {
-    if (started && canShoot) cameraRef.current?.startRecording()
+    if (!started || !canShoot) return
+    cameraRef.current?.startRecording()
+    playReload()
   }, [started, canShoot])
 
   async function shoot(fired: FireInfo) {
@@ -135,6 +138,7 @@ export function SnipePage() {
       const snipe = await submitSnipe(league.id, target.user.id, shot.photo, requestId ?? undefined)
       saveLastLeague(league.id)
       navigator.vibrate?.([30, 50, 30])
+      playHit()
       setDone({ member: target, points: snipe.points })
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
@@ -201,7 +205,7 @@ export function SnipePage() {
       {!shot && (
         <>
           <div className="snipe-reticle" aria-hidden>
-            <CrosshairIcon width={96} height={96} strokeWidth={1.25} />
+            <Crosshair size={96} />
           </div>
           {error && <p className="snipe-error" role="alert">{error}</p>}
           <div className="snipe-bottom">

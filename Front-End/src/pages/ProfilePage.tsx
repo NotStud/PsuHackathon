@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom'
 import { getCurrentUser, getLeaderboard, getMyLeagues, signOut } from '../api'
 import { Avatar } from '../components/Avatar'
 import { CooldownBadge } from '../components/CooldownBadge'
+import { CrosshairPicker } from '../components/CrosshairPicker'
+import { SoundPicker } from '../components/SoundPicker'
 import { PageHeader } from '../components/PageHeader'
 import { useAsync } from '../hooks'
 
@@ -76,6 +78,13 @@ export function ProfilePage() {
           </li>
         ))}
       </ul>
+
+      <h2 className="section-title">Crosshair</h2>
+      <CrosshairPicker />
+
+      <h2 className="section-title">Gunshot sound</h2>
+      <p className="muted small">Tap to hear it. Off mutes all game sounds.</p>
+      <SoundPicker />
 
       {logoutError && <p className="error" role="alert">{logoutError}</p>}
       <button className="button button-block" disabled={signingOut} onClick={async () => {
