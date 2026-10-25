@@ -1,4 +1,4 @@
-import type { League, LeagueRules, Member, Snipe, User } from '../types'
+import type { FiredShot, League, LeagueRules, Member, Snipe, User } from '../types'
 
 const TOKEN_KEY = 'snipe:token'
 export const getToken = () => localStorage.getItem(TOKEN_KEY)
@@ -48,8 +48,16 @@ export const getLeague = (id: string) => request<League>(`/leagues/${id}`)
 export const getLeaderboard = (id: string) => request<Member[]>(`/leagues/${id}/leaderboard`)
 export const getFeed = (id: string) => request<Snipe[]>(`/leagues/${id}/feed`)
 export const joinLeague = (joinCode: string) => request<League>('/leagues/join', { joinCode })
-export const createLeague = (name: string, cooldownMinutes: number, rules: LeagueRules = {}) =>
-  request<League>('/leagues', { name, cooldownMinutes, ...rules })
+export const createLeague = (name: string, rules: LeagueRules = {}) =>
+  request<League>('/leagues', { name, ...rules })
+/** League creator only. */
+export const updateLeagueRules = (leagueId: string, rules: LeagueRules) =>
+  request<League>(`/leagues/${leagueId}/rules`, rules)
+/** Tell the server a shot was fired: starts the sniper cooldown and pauses immunity at this moment. */
+export const fireShot = (leagueId: string, requestId: string) =>
+  request<FiredShot>(`/leagues/${leagueId}/shots`, { requestId })
+/** A small image data URL, or null to remove the photo. */
+export const setAvatar = (avatarUrl: string | null) => request<User>('/me/avatar', { avatarUrl })
 export const challengeSnipe = (leagueId: string, snipeId: string, reason: string) =>
   request<Snipe>(`/leagues/${leagueId}/snipes/${snipeId}/challenge`, { reason })
 export const approveChallenge = (leagueId: string, snipeId: string) =>

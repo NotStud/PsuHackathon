@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { getCurrentUser, getLeaderboard, getMyLeagues, signOut } from '../api'
-import { Avatar } from '../components/Avatar'
+import { AvatarEditor } from '../components/AvatarEditor'
 import { CooldownBadge } from '../components/CooldownBadge'
 import { CrosshairPicker } from '../components/CrosshairPicker'
 import { SoundPicker } from '../components/SoundPicker'
@@ -41,7 +41,7 @@ export function ProfilePage() {
       {(user.error || stats.error) && <p className="error">{user.error || stats.error}</p>}
       {user.data && (
         <div className="profile-hero">
-          <Avatar user={user.data} size={80} />
+          <AvatarEditor user={user.data} onChange={user.reload} />
           <h2>{user.data.displayName}</h2>
         </div>
       )}

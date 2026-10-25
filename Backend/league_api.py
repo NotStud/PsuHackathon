@@ -16,7 +16,7 @@ router = APIRouter(prefix="/api")
 
 from database import get_session
 from auth import current_player, user_json
-from models import League, LeagueMember, LeagueSnipe, Player, SnipeChallenge, utc_now
+from models import League, LeagueMember, LeagueShot, LeagueSnipe, Player, SnipeChallenge, utc_now
 
 SessionDep = Annotated[Session, Depends(get_session)]
 PlayerDep = Annotated[Player, Depends(current_player)]
@@ -24,12 +24,34 @@ PlayerDep = Annotated[Player, Depends(current_player)]
 
 class LeagueInput(BaseModel):
     name: str = InputField(min_length=1, max_length=40)
-    cooldownMinutes: int = InputField(default=10, ge=0, le=1440)          # Target immunity
-    shooterCooldownMinutes: int = InputField(default=10, ge=0, le=1440)   # Shooter cooldown
-    pointsPerSnipe: int = InputField(default=1, ge=1, le=100)            # Base points
-    bountyBonusPoints: int = InputField(default=2, ge=0, le=100)          # Bounty bonus
-    kingBonusPoints: int = InputField(default=2, ge=0, le=100)            # King/1st place bonus
-    roundDurationDays: float = InputField(default=7.0, gt=0, le=365)      # Round length
+    cooldownMinutes: int = InputField(default=30, ge=0, le=1440)          # Target immunity
+    shooterCooldownMinutes: int = InputField(default=5, ge=0, le=1440)    # Wait after every shot fired
+    pointsPerSnipe: int = InputField(default=10, ge=1, le=1000)           # Base points
+    bountyBonusPoints: int = InputField(default=10, ge=0, le=1000)        # Bounty bonus
+    kingBonusPoints: int = InputField(default=5, ge=0, le=1000)           # King/1st place bonus
+    bountyHours: float = InputField(default=24, gt=0, le=720)             # How long each member is the bounty
+
+
+class RulesInput(BaseModel):
+    """Rule changes from the league creator; omitted fields stay as they are."""
+    cooldownMinutes: Optional[int] = InputField(default=None, ge=0, le=1440)
+    shooterCooldownMinutes: Optional[int] = InputField(default=None, ge=0, le=1440)
+    pointsPerSnipe: Optional[int] = InputField(default=None, ge=1, le=1000)
+    bountyBonusPoints: Optional[int] = InputField(default=None, ge=0, le=1000)
+    kingBonusPoints: Optional[int] = InputField(default=None, ge=0, le=1000)
+    bountyHours: Optional[float] = InputField(default=None, gt=0, le=720)
+
+
+# How long after firing a shot it can still be sent as a snipe.
+SHOT_SUBMIT_WINDOW = timedelta(minutes=10)
+
+RULE_COLUMNS = dict(cooldownMinutes="cooldown_minutes", shooterCooldownMinutes="shooter_cooldown_minutes",
+                    pointsPerSnipe="points_per_snipe", bountyBonusPoints="bounty_bonus_points",
+                    kingBonusPoints="king_bonus_points", bountyHours="bounty_hours")
+
+
+class ShotInput(BaseModel):
+    requestId: str = InputField(min_length=1, max_length=100)
 
 
 class JoinInput(BaseModel):
@@ -50,47 +72,57 @@ class ChallengeInput(BaseModel):
 # GAME ENGINE LOGIC (Bounty, King, and Dynamic Score Recalculation)
 # =============================================================================
 def get_bounty_player_id(league: League, at_time: datetime, session: Session) -> Optional[int]:
-    """
-    Divides round duration equally among all league members and determines
-    who is currently the bounty target at `at_time`.
-    """
+    """Each member is the bounty for `bounty_hours`, in player-ID order, starting when the league was made."""
     member_ids = session.exec(
         select(LeagueMember.player_id)
         .where(LeagueMember.league_id == league.id)
         .order_by(LeagueMember.player_id)
     ).all()
-
     if not member_ids:
         return None
-
-    starts = league.created_at
-    total_seconds = league.round_duration_days * 86400
-    if total_seconds <= 0:
+    slot = league.bounty_hours * 3600
+    if slot <= 0:
         return member_ids[0]
-
-    elapsed = max(0.0, (at_time - starts).total_seconds())
-    slot_duration = total_seconds / len(member_ids)
-    elapsed_in_round = elapsed % total_seconds
-    index = int(elapsed_in_round // slot_duration)
-    return member_ids[min(index, len(member_ids) - 1)]
+    elapsed = max(0.0, (at_time - league.created_at).total_seconds())
+    return member_ids[int(elapsed // slot) % len(member_ids)]
 
 
-def bounty_ends_at(league: League, at_time: datetime, session: Session) -> Optional[datetime]:
-    """When the current bounty slot ends and the next member becomes the bounty."""
-    count = len(session.exec(select(LeagueMember.player_id).where(LeagueMember.league_id == league.id)).all())
-    total_seconds = league.round_duration_days * 86400
-    if not count or total_seconds <= 0:
+def bounty_ends_at(league: League, at_time: datetime) -> Optional[datetime]:
+    """When the current bounty's turn ends and the next member becomes the bounty."""
+    slot = league.bounty_hours * 3600
+    if slot <= 0:
         return None
-    slot = total_seconds / count
     elapsed = max(0.0, (at_time - league.created_at).total_seconds())
     return league.created_at + timedelta(seconds=(int(elapsed // slot) + 1) * slot)
 
 
+def league_owner_id(league: League, session: Session) -> Optional[int]:
+    """The creator edits the rules. Leagues made before creators were recorded fall back to
+    their earliest member (lowest player ID)."""
+    if league.creator_id:
+        return league.creator_id
+    return session.exec(select(LeagueMember.player_id).where(LeagueMember.league_id == league.id)
+                        .order_by(LeagueMember.player_id).limit(1)).first()
+
+
+def valid_snipes(league: League):
+    reversed_ids = select(SnipeChallenge.snipe_id).where(SnipeChallenge.status == "approved")
+    return select(LeagueSnipe).where(LeagueSnipe.league_id == league.id, LeagueSnipe.id.not_in(reversed_ids))
+
+
+def immune_at(league: League, target_id: int, at_time: datetime, session: Session) -> bool:
+    """Whether the target was protected at `at_time`, judged only from snipes made before then."""
+    last_hit = session.exec(valid_snipes(league).where(LeagueSnipe.target_id == target_id,
+                                                       LeagueSnipe.created_at <= at_time)
+                            .order_by(LeagueSnipe.created_at.desc()).limit(1)).first()
+    return bool(last_hit) and last_hit.created_at + timedelta(minutes=league.cooldown_minutes) > at_time
+
+
 def refresh_timers(league: League, player_ids, session: Session):
     """Rebuild immunity and shooter cooldowns from the snipes that still count (as game.py does),
-    so reversing one snipe never clears a timer that a later valid snipe set."""
-    reversed_ids = select(SnipeChallenge.snipe_id).where(SnipeChallenge.status == "approved")
-    valid = select(LeagueSnipe).where(LeagueSnipe.league_id == league.id, LeagueSnipe.id.not_in(reversed_ids))
+    so reversing one snipe never clears a timer that a later valid snipe set. Every shot fired
+    counts toward the shooter cooldown, even one whose snipe was reversed."""
+    valid = valid_snipes(league)
 
     def latest(query):
         return session.exec(query.order_by(LeagueSnipe.created_at.desc()).limit(1)).first()
@@ -100,10 +132,14 @@ def refresh_timers(league: League, player_ids, session: Session):
         if not member:
             continue
         last_hit = latest(valid.where(LeagueSnipe.target_id == player_id))
-        last_shot = latest(valid.where(LeagueSnipe.shooter_id == player_id))
+        last_snipe = latest(valid.where(LeagueSnipe.shooter_id == player_id))
+        last_fired = session.exec(select(LeagueShot.fired_at).where(
+            LeagueShot.league_id == league.id, LeagueShot.shooter_id == player_id)
+            .order_by(LeagueShot.fired_at.desc()).limit(1)).first()
+        shot_times = [t for t in (last_snipe.created_at if last_snipe else None, last_fired) if t]
         member.out_until = last_hit.created_at + timedelta(minutes=league.cooldown_minutes) if last_hit else None
-        member.cooldown_until = (last_shot.created_at + timedelta(minutes=league.shooter_cooldown_minutes)
-                                 if last_shot else None)
+        member.cooldown_until = (max(shot_times) + timedelta(minutes=league.shooter_cooldown_minutes)
+                                 if shot_times else None)
         session.add(member)
 
 
@@ -185,7 +221,8 @@ def league_json(league: League, session: Session):
     ).all()
     now = utc_now()
     bounty_id = get_bounty_player_id(league, now, session)
-    bounty_until = bounty_ends_at(league, now, session)
+    bounty_until = bounty_ends_at(league, now)
+    owner_id = league_owner_id(league, session)
 
     return dict(
         id=str(league.id),
@@ -196,7 +233,8 @@ def league_json(league: League, session: Session):
         pointsPerSnipe=league.points_per_snipe,
         bountyBonusPoints=league.bounty_bonus_points,
         kingBonusPoints=league.king_bonus_points,
-        roundDurationDays=league.round_duration_days,
+        bountyHours=league.bounty_hours,
+        creatorId=str(owner_id) if owner_id else None,
         bountyPlayerId=str(bounty_id) if bounty_id else None,
         bountyEndsAt=bounty_until.isoformat() + "Z" if bounty_until else None,
         memberIds=[str(pid) for pid in ids]
@@ -265,7 +303,8 @@ def create_league(body: LeagueInput, session: SessionDep, player: PlayerDep):
         points_per_snipe=body.pointsPerSnipe,
         bounty_bonus_points=body.bountyBonusPoints,
         king_bonus_points=body.kingBonusPoints,
-        round_duration_days=body.roundDurationDays,
+        bounty_hours=body.bountyHours,
+        creator_id=player.id,
         join_code=secrets.token_hex(4).upper()
     )
     session.add(league)
@@ -294,6 +333,46 @@ def join_league(body: JoinInput, session: SessionDep, player: PlayerDep):
 @router.get("/leagues/{league_id}")
 def get_league(league_id: int, session: SessionDep, player: PlayerDep):
     return league_json(require_league(league_id, player, session), session)
+
+
+@router.post("/leagues/{league_id}/rules")
+def update_rules(league_id: int, body: RulesInput, session: SessionDep, player: PlayerDep):
+    league = require_league(league_id, player, session)
+    if league_owner_id(league, session) != player.id:
+        raise HTTPException(403, "Only the league creator can change the rules.")
+    for field, column in RULE_COLUMNS.items():
+        value = getattr(body, field)
+        if value is not None:
+            setattr(league, column, value)
+    session.add(league)
+    session.commit()
+    session.refresh(league)
+    return league_json(league, session)
+
+
+@router.post("/leagues/{league_id}/shots")
+def fire_shot(league_id: int, body: ShotInput, session: SessionDep, player: PlayerDep):
+    """Called the moment a shot is fired, hit or miss. Starts the shooter cooldown and fixes
+    the time target immunity is judged at when the snipe is submitted."""
+    league = require_league(league_id, player, session)
+    session.exec(select(League).where(League.id == league_id).with_for_update()).one()
+    shot = session.get(LeagueShot, body.requestId)
+    if shot:
+        if shot.shooter_id != player.id or shot.league_id != league_id:
+            raise HTTPException(409, "That shot ID is already taken.")
+    else:
+        now = utc_now()
+        shooter = session.get(LeagueMember, (league_id, player.id))
+        if shooter.cooldown_until and shooter.cooldown_until > now:
+            raise HTTPException(409, "Your shooter cooldown is still active.")
+        shot = LeagueShot(request_id=body.requestId, league_id=league_id, shooter_id=player.id, fired_at=now)
+        shooter.cooldown_until = now + timedelta(minutes=league.shooter_cooldown_minutes)
+        session.add_all([shot, shooter])
+        session.commit()
+        session.refresh(shot)
+    reload_until = shot.fired_at + timedelta(minutes=league.shooter_cooldown_minutes)
+    return dict(requestId=shot.request_id, firedAt=shot.fired_at.isoformat() + "Z",
+                reloadUntil=reload_until.isoformat() + "Z")
 
 
 @router.get("/leagues/{league_id}/leaderboard")
@@ -384,20 +463,34 @@ def submit_snipe(league_id: int, body: SnipeInput, session: SessionDep, player: 
         raise HTTPException(404, "That player is not in this league.")
 
     now = utc_now()
+    fired = session.get(LeagueShot, body.requestId) if body.requestId else None
+    if fired and (fired.shooter_id != player.id or fired.league_id != league_id or fired.snipe_id):
+        fired = None
 
-    # Cooldown checks
-    if shooter.cooldown_until and shooter.cooldown_until > now:
-        raise HTTPException(409, "Your shooter cooldown is still active.")
-    if target.out_until and target.out_until > now:
-        raise HTTPException(409, "That player is currently immune to snipes.")
+    if fired:
+        # A shot fired through POST /shots: its cooldown already started, and immunity is
+        # judged at the moment it was fired (the timers pause while the target is picked).
+        if now - fired.fired_at > SHOT_SUBMIT_WINDOW:
+            raise HTTPException(410, "That shot is too old to send. Take a new one.")
+        if immune_at(league, body.targetId, fired.fired_at, session):
+            raise HTTPException(409, "That player was immune when you fired.")
+    else:
+        if shooter.cooldown_until and shooter.cooldown_until > now:
+            raise HTTPException(409, "Your shooter cooldown is still active.")
+        if target.out_until and target.out_until > now:
+            raise HTTPException(409, "That player is currently immune to snipes.")
 
     photo = body.photoUrl
     if photo and not photo.startswith(("data:image/", "https://")):
         raise HTTPException(422, "Photo must be an image data URL or HTTPS URL.")
 
-    # Apply timers
-    shooter.cooldown_until = now + timedelta(minutes=league.shooter_cooldown_minutes)
-    target.out_until = now + timedelta(minutes=league.cooldown_minutes)
+    # Apply timers. The snipe counts from the moment it was fired.
+    hit_at = fired.fired_at if fired else now
+    if not fired:
+        shooter.cooldown_until = now + timedelta(minutes=league.shooter_cooldown_minutes)
+    immune_until = hit_at + timedelta(minutes=league.cooldown_minutes)
+    if not target.out_until or target.out_until < immune_until:
+        target.out_until = immune_until
 
     hit = LeagueSnipe(
         league_id=league_id,
@@ -405,10 +498,13 @@ def submit_snipe(league_id: int, body: SnipeInput, session: SessionDep, player: 
         target_id=body.targetId,
         photo_url=photo,
         request_id=body.requestId,
-        created_at=now
+        created_at=hit_at
     )
     session.add_all([shooter, target, hit])
     session.flush()
+    if fired:
+        fired.snipe_id = hit.id
+        session.add(fired)
 
     # Recalculate scores and hit values
     scores, hit_pts = compute_league_scores_and_points(league, session)

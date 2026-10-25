@@ -67,6 +67,12 @@ export const TargetIcon = (p: SVGProps<SVGSVGElement>) => (
   </svg>
 )
 
+export const PauseIcon = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...base} {...p}>
+    <path d="M9 5v14M15 5v14" />
+  </svg>
+)
+
 export const ShieldIcon = (p: SVGProps<SVGSVGElement>) => (
   <svg {...base} {...p}>
     <path d="M12 3 5 6v6c0 4.5 3 7.5 7 9 4-1.5 7-4.5 7-9V6l-7-3Z" />

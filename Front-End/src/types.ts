@@ -4,6 +4,8 @@ export interface User {
   id: string
   displayName: string
   avatarColor: string
+  /** Profile photo URL, or null to show the initial on a colored circle. */
+  avatarUrl?: string | null
 }
 
 export interface League {
@@ -20,18 +22,30 @@ export interface League {
   bountyBonusPoints: number
   /** Extra points for sniping whoever is in first place. */
   kingBonusPoints: number
-  /** The bounty rotates through every member once per round. */
-  roundDurationDays: number
+  /** How long each member stays the bounty before it moves to the next. */
+  bountyHours: number
+  /** Only the creator can change the rules. */
+  creatorId: string | null
   bountyPlayerId: string | null
   /** ISO timestamp when the bounty moves to the next member. */
   bountyEndsAt: string | null
   memberIds: string[]
 }
 
-/** Optional game rules when creating a league; the server fills in defaults. */
+/** Game rules set by the league creator; the server fills in defaults for any left out. */
 export type LeagueRules = Partial<
-  Pick<League, 'pointsPerSnipe' | 'shooterCooldownMinutes' | 'bountyBonusPoints' | 'kingBonusPoints' | 'roundDurationDays'>
+  Pick<
+    League,
+    'cooldownMinutes' | 'shooterCooldownMinutes' | 'pointsPerSnipe' | 'bountyBonusPoints' | 'kingBonusPoints' | 'bountyHours'
+  >
 >
+
+/** Returned when a shot is fired: the sniper cooldown runs until reloadUntil. */
+export interface FiredShot {
+  requestId: string
+  firedAt: string
+  reloadUntil: string
+}
 
 export interface Member {
   user: User

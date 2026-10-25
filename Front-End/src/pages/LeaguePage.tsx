@@ -1,12 +1,14 @@
 import { useState, type FormEvent } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { approveChallenge, challengeSnipe, getFeed, getLeaderboard, getLeague } from '../api'
+import { approveChallenge, challengeSnipe, getFeed, getLeaderboard, getLeague, updateLeagueRules } from '../api'
 import { getCurrentUser } from '../api'
 import { Avatar } from '../components/Avatar'
 import { CooldownBadge } from '../components/CooldownBadge'
 import { CrosshairIcon, TargetIcon } from '../components/Icons'
 import { PageHeader } from '../components/PageHeader'
 import { RuleBadges } from '../components/RuleBadges'
+import { RulesFields } from '../components/RulesFields'
+import type { Rules } from '../rules'
 import { timeAgo, timeUntil } from '../format'
 import { useAsync, useNow } from '../hooks'
 import type { League, Member, Snipe } from '../types'
@@ -34,6 +36,9 @@ export function LeaguePage() {
       <PageHeader title={league.data?.name ?? 'League'} back />
 
       {league.data && <LeagueRulesLine league={league.data} />}
+      {league.data && me.data?.id === league.data.creatorId && (
+        <RulesEditor league={league.data} onSaved={() => { league.reload(); board.reload() }} />
+      )}
       {league.data && <BountyBanner league={league.data} members={board.data} />}
 
       <Link to={`/snipe?league=${leagueId}`} className="button button-primary button-block">
@@ -73,12 +78,67 @@ function LeagueRulesLine({ league }: { league: League }) {
     league.bountyBonusPoints > 0 && `bounty +${league.bountyBonusPoints}`,
     league.kingBonusPoints > 0 && `king +${league.kingBonusPoints}`,
     `${league.cooldownMinutes} min immunity`,
-    league.shooterCooldownMinutes > 0 && `${league.shooterCooldownMinutes} min between shots`,
+    league.shooterCooldownMinutes > 0 && `${league.shooterCooldownMinutes} min sniper cooldown`,
+    `bounty switches every ${league.bountyHours}h`,
   ].filter(Boolean)
   return (
     <p className="muted small league-meta">
       Code <span className="code">{league.joinCode}</span> · {parts.join(' · ')}
     </p>
+  )
+}
+
+/** The league creator can change any rule; changes apply to snipes from now on. */
+function RulesEditor({ league, onSaved }: { league: League; onSaved: () => void }) {
+  const current: Rules = {
+    cooldownMinutes: league.cooldownMinutes,
+    shooterCooldownMinutes: league.shooterCooldownMinutes,
+    pointsPerSnipe: league.pointsPerSnipe,
+    bountyBonusPoints: league.bountyBonusPoints,
+    kingBonusPoints: league.kingBonusPoints,
+    bountyHours: league.bountyHours,
+  }
+  const [open, setOpen] = useState(false)
+  const [rules, setRules] = useState(current)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function save(e: FormEvent) {
+    e.preventDefault()
+    setBusy(true)
+    setError(null)
+    try {
+      await updateLeagueRules(league.id, rules)
+      setOpen(false)
+      onSaved()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  if (!open) {
+    return (
+      <button className="link-button rules-edit" onClick={() => { setRules(current); setOpen(true) }}>
+        Edit game rules
+      </button>
+    )
+  }
+  return (
+    <form className="card form" onSubmit={save}>
+      <h3 className="form-section">Game rules</h3>
+      <RulesFields rules={rules} onChange={setRules} />
+      {error && <p className="error">{error}</p>}
+      <div className="button-row">
+        <button type="button" className="button" onClick={() => setOpen(false)}>
+          Cancel
+        </button>
+        <button className="button button-primary" disabled={busy}>
+          {busy ? 'Saving…' : 'Save rules'}
+        </button>
+      </div>
+    </form>
   )
 }
 

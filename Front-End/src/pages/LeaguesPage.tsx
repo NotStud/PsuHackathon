@@ -1,9 +1,10 @@
-import { useState, type ChangeEvent, type FormEvent } from 'react'
+import { useState, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { createLeague, getMyLeagues, joinLeague } from '../api'
 import { PageHeader } from '../components/PageHeader'
+import { RulesFields } from '../components/RulesFields'
+import { DEFAULT_RULES } from '../rules'
 import { useAsync } from '../hooks'
-import type { LeagueRules } from '../types'
 
 type Panel = 'none' | 'join' | 'create'
 
@@ -104,17 +105,7 @@ function JoinForm() {
 function CreateForm() {
   const navigate = useNavigate()
   const [name, setName] = useState('')
-  const [cooldown, setCooldown] = useState(60)
-  // Defaults match the server's; see LeagueInput in Backend/league_api.py.
-  const [rules, setRules] = useState<Required<LeagueRules>>({
-    pointsPerSnipe: 1,
-    bountyBonusPoints: 2,
-    kingBonusPoints: 2,
-    shooterCooldownMinutes: 10,
-    roundDurationDays: 7,
-  })
-  const setRule = (key: keyof LeagueRules) => (e: ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
-    setRules({ ...rules, [key]: Number(e.target.value) })
+  const [rules, setRules] = useState(DEFAULT_RULES)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
@@ -123,7 +114,7 @@ function CreateForm() {
     setBusy(true)
     setError(null)
     try {
-      const league = await createLeague(name, cooldown, rules)
+      const league = await createLeague(name, rules)
       navigate(`/leagues/${league.id}`)
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
@@ -142,52 +133,9 @@ function CreateForm() {
           required
         />
       </label>
-      <label className="field">
-        <span>Cooldown after being sniped</span>
-        <select value={cooldown} onChange={(e) => setCooldown(Number(e.target.value))}>
-          <option value={5}> 5 minutes</option>
-          <option value={15}>15 minutes</option>
-          <option value={30}>30 minutes</option>
-          <option value={60}>1 hour</option>
-          <option value={120}>2 hours</option>
-          <option value={360}>6 hours</option>
-          <option value={1440}>24 hours</option>
-        </select>
-      </label>
-      <details className="rules">
-        <summary>Game rules</summary>
-        <label className="field">
-          <span>Points per snipe</span>
-          <input type="number" min={1} max={100} value={rules.pointsPerSnipe} onChange={setRule('pointsPerSnipe')} />
-        </label>
-        <label className="field">
-          <span>Bounty bonus (the bounty rotates through everyone)</span>
-          <input type="number" min={0} max={100} value={rules.bountyBonusPoints} onChange={setRule('bountyBonusPoints')} />
-        </label>
-        <label className="field">
-          <span>King bonus (for sniping whoever is in first)</span>
-          <input type="number" min={0} max={100} value={rules.kingBonusPoints} onChange={setRule('kingBonusPoints')} />
-        </label>
-        <label className="field">
-          <span>Wait between your own snipes</span>
-          <select value={rules.shooterCooldownMinutes} onChange={setRule('shooterCooldownMinutes')}>
-            <option value={0}>No wait</option>
-            <option value={5}>5 minutes</option>
-            <option value={10}>10 minutes</option>
-            <option value={30}>30 minutes</option>
-            <option value={60}>1 hour</option>
-          </select>
-        </label>
-        <label className="field">
-          <span>Bounty round (everyone is the bounty once per round)</span>
-          <select value={rules.roundDurationDays} onChange={setRule('roundDurationDays')}>
-            <option value={1}>1 day</option>
-            <option value={3}>3 days</option>
-            <option value={7}>1 week</option>
-            <option value={14}>2 weeks</option>
-          </select>
-        </label>
-      </details>
+      <h3 className="form-section">Game rules</h3>
+      <p className="muted small">You can change these later from the league page.</p>
+      <RulesFields rules={rules} onChange={setRules} />
       {error && <p className="error">{error}</p>}
       <button className="button button-primary" disabled={busy || !name.trim()}>
         {busy ? 'Creating…' : 'Create league'}
