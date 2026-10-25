@@ -274,3 +274,45 @@ class GameRulesTests(unittest.TestCase):
         self.vote(lid, sent, carol)
         reversal = self.challenge(lid, sent, bob)  # once it counts, Bob can challenge it like any hit
         self.assertEqual(reversal['status'], 'challenged')
+
+    def test_challenges_list_who_voted_yes(self):
+        players = self.players + [self.signup('Erin')]
+        alice, bob, carol, dave, erin = players
+        lid = self.league(players, challengeVotes=2)
+        challenged = self.challenge(lid, self.snipe(lid, alice, bob, 0), bob)
+        self.vote(lid, challenged, dave)
+        result = self.vote(lid, challenged, carol)
+        self.assertEqual(result['challenges'][0]['voterIds'], [str(dave.id), str(carol.id)])
+
+    def test_claiming_a_headshot_when_sending_a_hit(self):
+        alice, bob, carol, dave = self.players
+        lid = self.league(self.players, pointsPerSnipe=10, headshotBonusPoints=5)
+        sent = self.at(0, api.submit_snipe, lid, api.SnipeInput(targetId=bob.id, claimHeadshot=True,
+                                                                challengeReason='Between the eyes'), self.session, alice)
+        self.assertEqual(sent['points'], 10)  # the hit counts now; the bonus waits for the vote
+        self.assertFalse(sent['headshot'])
+        self.assertEqual([(c['kind'], c['claimsHeadshot']) for c in sent['challenges']], [('headshot', True)])
+        upheld = self.vote(lid, sent, carol)
+        self.assertEqual((upheld['points'], upheld['headshot']), (15, True))
+        self.assertEqual(self.board(lid, 1)['Alice']['points'], 15)
+
+    def test_claiming_a_headshot_needs_a_reason(self):
+        alice, bob = self.players[:2]
+        lid = self.league([alice, bob])
+        with self.assertRaises(HTTPException) as error:
+            self.at(0, api.submit_snipe, lid, api.SnipeInput(targetId=bob.id, claimHeadshot=True), self.session, alice)
+        self.assertEqual(error.exception.status_code, 422)
+
+    def test_a_miss_claimed_as_a_headshot_gets_the_hit_and_the_bonus(self):
+        alice, bob, carol, dave = self.players
+        lid = self.league(self.players, pointsPerSnipe=10, headshotBonusPoints=5)
+        sent = self.at(0, api.submit_snipe, lid, api.SnipeInput(targetId=bob.id, missed=True, claimHeadshot=True,
+                                                                challengeReason='Clean headshot'), self.session, alice)
+        self.assertEqual((sent['points'], sent['status']), (0, 'challenged'))
+        self.assertEqual([(c['kind'], c['claimsHeadshot']) for c in sent['challenges']], [('hit', True)])
+        with self.assertRaises(HTTPException):
+            self.challenge(lid, sent, alice, reason='Headshot')  # the miss claim already says headshot
+        counted = self.vote(lid, sent, dave)
+        self.assertEqual((counted['points'], counted['headshot'], counted['status']), (15, True, 'valid'))
+        board = self.board(lid, 1)
+        self.assertEqual((board['Alice']['points'], board['Bob']['points']), (15, -1))

@@ -142,6 +142,7 @@ class Challenge(SQLModel, table=True):
     challenger_id: int = Field(foreign_key="players.id")
     reason: str
     status: str = "pending"  # pending or approved ("rejected" only from the old yes/no votes)
+    headshot: bool = False  # a "hit" claim that says the miss was a headshot, too
     created_at: NaiveDatetime = Field(default_factory=utc_now)
     resolved_at: NaiveDatetime | None = None
 

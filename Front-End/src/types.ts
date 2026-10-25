@@ -106,8 +106,12 @@ export interface Challenge {
    */
   status: 'pending' | 'approved' | 'rejected'
   yesVotes: number
+  /** Who voted yes, first vote first. */
+  voterIds: string[]
   votesNeeded: number
   /** The current player has voted yes. */
   voted: boolean
+  /** Passing it gives the headshot bonus: a headshot claim, or a miss claimed as a headshot hit. */
+  claimsHeadshot: boolean
   createdAt: string
 }
