@@ -72,6 +72,8 @@ export function SnipePage() {
   // Was the crosshair on a person? Worked out on the device right after the shot.
   const [check, setCheck] = useState<PersonCheck | 'checking' | 'failed' | null>(null)
   const checking = useRef<Shot | null>(null)
+  // The "shot fired" request; a hit is only sent after it, so the server sees them in order.
+  const registering = useRef<Promise<unknown> | null>(null)
   const [flash, setFlash] = useState(false)
   const [targetId, setTargetId] = useState<string | null>(null)
   // One ID per shot, so a retried send can't record the same snipe twice.
@@ -123,21 +125,23 @@ export function SnipePage() {
     bang()
     setFlash(true)
     setTimeout(() => setFlash(false), 180)
+    const id = crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`
+    const at = Date.now()
+    // Every shot fired starts the league's sniper cooldown, hit or miss, even if the photo
+    // fails or the network is slow. The server's time replaces this guess once it answers.
+    if (league) {
+      setShotReload(new Date(at + league.shooterCooldownMinutes * 60_000).toISOString())
+      registering.current = fireShot(league.id, id).then(
+        (shotFired) => setShotReload(shotFired.reloadUntil),
+        (err: unknown) => setError(err instanceof Error ? err.message : String(err)),
+      )
+    }
     try {
       const taken = await cameraRef.current?.takeShot(fired)
       if (!taken) throw new Error('Camera is not ready. Try again.')
-      const id = crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`
       setShot(taken)
       setRequestId(id)
-      setFiredAt(Date.now())
-
-      // Starts the sniper cooldown even if this shot is never sent.
-      if (league) {
-        fireShot(league.id, id).then(
-          (fired) => setShotReload(fired.reloadUntil),
-          (err: unknown) => setError(err instanceof Error ? err.message : String(err)),
-        )
-      }
+      setFiredAt(at)
 
       setCheck('checking')
       checking.current = taken
@@ -156,6 +160,7 @@ export function SnipePage() {
     setSubmitting(true)
     setError(null)
     try {
+      await registering.current
       const snipe = await submitSnipe(league.id, target.user.id, shot.photo, requestId ?? undefined)
       saveLastLeague(league.id)
       navigator.vibrate?.([30, 50, 30])
