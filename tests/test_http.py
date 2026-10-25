@@ -194,7 +194,9 @@ class HttpTests(unittest.TestCase):
         challenged = self.client.post(base + '/snipes/' + hit['id'] + '/challenge', headers=alice[1], json={'reason': 'Not a valid shot'})
         self.assertEqual(challenged.status_code, 200, challenged.text)
         self.assertEqual(challenged.json()['status'], 'challenged')
-        approved = self.client.post(base + '/snipes/' + hit['id'] + '/approve', headers=charlie[1])
+        challenge_id = challenged.json()['challenges'][0]['id']
+        approved = self.client.post(base + '/challenges/' + challenge_id + '/vote', headers=charlie[1],
+                                    json={'approve': True})  # Charlie is the only one who can vote
         self.assertEqual(approved.status_code, 200, approved.text)
         self.assertEqual(approved.json()['status'], 'reversed')
         board = self.client.get(base + '/leaderboard', headers=alice[1]).json()

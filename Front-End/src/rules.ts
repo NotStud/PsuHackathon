@@ -10,4 +10,6 @@ export const DEFAULT_RULES: Rules = {
   bountyBonusPoints: 2,
   kingBonusPoints: 2,
   bountyHours: 24,
+  headshotBonusPoints: 2,
+  challengeVotes: 1,
 }

@@ -26,9 +26,16 @@ class DatabaseTests(unittest.TestCase):
             engine.dispose()
 
     def test_requires_postgres_configuration(self):
-        for url in ("", "sqlite:///game.db"):
-            with self.subTest(url=url), self.assertRaises(RuntimeError):
-                database.build_engine(url)
+        with self.assertRaises(RuntimeError):
+            database.build_engine("mysql://root@localhost/game")
+
+    def test_local_sqlite_without_configuration(self):
+        engine = database.build_engine("")
+        try:
+            self.assertEqual(engine.dialect.name, "sqlite")
+            self.assertEqual(engine.url.database, database.LOCAL_DATABASE.as_posix())
+        finally:
+            engine.dispose()
 
     def test_rls_and_creation_share_transaction(self):
         engine = MagicMock()
@@ -37,8 +44,9 @@ class DatabaseTests(unittest.TestCase):
             database.create_db_and_tables()
         create.assert_called_once_with(connection)
         statements = [str(call.args[0]) for call in connection.execute.call_args_list]
-        self.assertEqual(len(statements), len(SQLModel.metadata.tables) + 11)
-        for table in ("players", "games", "game_players", "snipes"):
+        # One ENABLE ROW LEVEL SECURITY per table, 14 added columns, 2 statements copying old challenges.
+        self.assertEqual(len(statements), len(SQLModel.metadata.tables) + 16)
+        for table in ("players", "games", "game_players", "snipes", "league_challenges", "challenge_votes"):
             self.assertIn(f'ALTER TABLE public."{table}" ENABLE ROW LEVEL SECURITY', statements)
 
     def test_game_score_lifecycle(self):

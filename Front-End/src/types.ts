@@ -24,6 +24,10 @@ export interface League {
   kingBonusPoints: number
   /** How long each member stays the bounty before it moves to the next. */
   bountyHours: number
+  /** Extra points for a headshot. */
+  headshotBonusPoints: number
+  /** Yes votes a challenge needs to pass (fewer if the league doesn't have that many voters). */
+  challengeVotes: number
   /** Only the creator can change the rules. */
   creatorId: string | null
   bountyPlayerId: string | null
@@ -36,7 +40,8 @@ export interface League {
 export type LeagueRules = Partial<
   Pick<
     League,
-    'cooldownMinutes' | 'shooterCooldownMinutes' | 'pointsPerSnipe' | 'bountyBonusPoints' | 'kingBonusPoints' | 'bountyHours'
+    | 'cooldownMinutes' | 'shooterCooldownMinutes' | 'pointsPerSnipe' | 'bountyBonusPoints' | 'kingBonusPoints'
+    | 'bountyHours' | 'headshotBonusPoints' | 'challengeVotes'
   >
 >
 
@@ -72,9 +77,29 @@ export interface Snipe {
   crosshair?: string | null
   /** Points this snipe earned, including bonuses; 0 once reversed. */
   points: number
-  /** 'challenged' while the target disputes it; 'reversed' once someone else approves. */
+  /** 'challenged' while a challenge is being voted on; 'reversed' once a reversal passes. */
   status: 'valid' | 'challenged' | 'reversed'
-  challengeReason: string | null
-  challengerId: string | null
+  /** Seen by the app when it was taken, or upheld by a vote. */
+  headshot: boolean
+  challenges: Challenge[]
+  createdAt: string
+}
+
+/**
+ * A challenge to a snipe, voted on by everyone but the shooter and the target. The target
+ * asks for a reversal ('reverse'); the shooter claims a headshot ('headshot').
+ */
+export interface Challenge {
+  id: string
+  kind: 'reverse' | 'headshot'
+  challengerId: string
+  reason: string
+  /** 'approved' at votesNeeded yes votes; 'rejected' at votesNeeded no votes (or once yes can't get there). */
+  status: 'pending' | 'approved' | 'rejected'
+  yesVotes: number
+  noVotes: number
+  votesNeeded: number
+  /** How the current player voted, if they did. */
+  myVote: 'yes' | 'no' | null
   createdAt: string
 }

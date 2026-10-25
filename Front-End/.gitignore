@@ -22,3 +22,6 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Self-signed HTTPS cert for testing on a phone (see vite.config.ts)
+.cert

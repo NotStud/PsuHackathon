@@ -6,7 +6,7 @@ import { MotionTrigger } from '../camera/MotionTrigger'
 import { CameraView, type CameraHandle, type Shot } from '../camera/CameraView'
 import { ShotReview } from '../camera/KillCam'
 import { KillCamActions } from '../camera/KillCamActions'
-import { preloadFart, bang, playHit, playReload } from '../camera/feedback'
+import { preloadFart, bang, playHit, playReload, SHOT_SOUNDS, useShotSound } from '../camera/feedback'
 import type { PersonCheck } from '../camera/personCheck'
 import type { FireInfo } from '../../../trigger_camera/trigger.js'
 import { Avatar } from '../components/Avatar'
@@ -15,10 +15,17 @@ import { CooldownBadge } from '../components/CooldownBadge'
 import { RuleBadges } from '../components/RuleBadges'
 import { CloseIcon, CrosshairIcon } from '../components/Icons'
 import { Crosshair } from '../components/Crosshair'
-import { LAST_PLACE, useCrosshair } from '../crosshairs'
+import { CROSSHAIRS, LAST_PLACE, useCrosshair, type CrosshairChoice } from '../crosshairs'
 import { countdown } from '../format'
 import { useAsync, useNow } from '../hooks'
 import type { Member } from '../types'
+
+/** The player's look with any limited (first place only) crosshair or sound swapped for the default, if any. */
+function withoutLimited(choice: CrosshairChoice, shot: string) {
+  const style = CROSSHAIRS.find((c) => c.id === choice.style)?.limited ? 'classic' : choice.style
+  const sound = SHOT_SOUNDS.find((s) => s.id === shot)?.limited ? 'realistic' : shot
+  return style === choice.style && sound === shot ? undefined : { style, color: choice.color, sound }
+}
 
 // The person-detection library is big, so only pages that shoot load it.
 const personCheck = () => import('../camera/personCheck')
@@ -38,6 +45,7 @@ export function SnipePage() {
   const [cameraReady, setCameraReady] = useState(false)
 
   const [crosshair] = useCrosshair()
+  const [sound] = useShotSound()
   const me = useAsync(getCurrentUser, [])
   const leagues = useAsync(getMyLeagues, [])
   // Nothing is preselected: the player picks the league each time they open the camera.
@@ -86,10 +94,12 @@ export function SnipePage() {
   const target = targets.find((m) => m.user.id === targetId)
   // Sniper cooldown: after every shot you have to wait before the next one.
   const myRow = board.data?.find((m) => me.data && m.user.id === me.data.id)
-  // Last place in this league is stuck with the cracked crosshair and the fart sound.
-  const look = myRow && rimFor(myRow, board.data) === 'easy-target' ? LAST_PLACE : undefined
+  const rim = myRow ? rimFor(myRow, board.data) : undefined
+  // Last place in this league is stuck with the cracked crosshair and the fart sound;
+  // the limited crosshair and sound only work for first place.
+  const look = rim === 'easy-target' ? LAST_PLACE : rim === 'king' ? undefined : withoutLimited(crosshair, sound.shot)
   // Download last place's recorded fart before the shot, so it plays right on the flick.
-  useEffect(() => { if (look) void preloadFart() }, [look])
+  useEffect(() => { if (rim === 'easy-target') void preloadFart() }, [rim])
   const reloadUntil =
     [myRow?.shooterCooldownUntil, shotReload]
       .filter((t): t is string => Boolean(t) && Date.parse(t!) > now)
@@ -156,6 +166,7 @@ export function SnipePage() {
       await registering.current
       const snipe = await submitSnipe(
         league.id, target.user.id, shot.photo, requestId ?? undefined, `${(look ?? crosshair).style}:${(look ?? crosshair).color}`,
+        typeof check === 'object' && check !== null && check.headshot,
       )
       navigator.vibrate?.([30, 50, 30])
       playHit()
@@ -261,9 +272,14 @@ export function SnipePage() {
           </div>
           {error && <p className="snipe-error" role="alert">{error}</p>}
           <div className="snipe-bottom">
-            {look && (
+            {rim === 'easy-target' && (
               <p className="snipe-notice">
                 You're in last place: cracked crosshair and fart sound until you climb out.
+              </p>
+            )}
+            {rim === 'king' && (
+              <p className="snipe-notice">
+                You're in first place: the Limited Sparkle crosshair and Bling sound are unlocked in Profile.
               </p>
             )}
             {reloadUntil && (

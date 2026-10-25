@@ -7,6 +7,8 @@ const FIELDS: { key: keyof Rules; label: string; unit: string; min: number; max:
   { key: 'bountyBonusPoints', label: 'Bounty bonus', unit: 'points', min: 0, max: 1000 },
   { key: 'kingBonusPoints', label: 'King bonus (sniping whoever is in first)', unit: 'points', min: 0, max: 1000 },
   { key: 'bountyHours', label: 'Bounty switches to the next player every', unit: 'hours', min: 1, max: 720 },
+  { key: 'headshotBonusPoints', label: 'Headshot bonus', unit: 'points', min: 0, max: 1000 },
+  { key: 'challengeVotes', label: 'Votes that decide a challenge (yes passes it, no votes it down)', unit: 'votes', min: 1, max: 5 },
 ]
 
 /** One number input per game rule, used when creating a league and when its creator edits it. */

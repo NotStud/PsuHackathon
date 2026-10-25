@@ -1,6 +1,6 @@
-import { useState, type FormEvent } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 import { useParams } from 'react-router-dom'
-import { approveChallenge, challengeSnipe, getFeed, getLeaderboard, getLeague, updateLeagueRules } from '../api'
+import { challengeSnipe, getFeed, getLeaderboard, getLeague, updateLeagueRules, voteOnChallenge } from '../api'
 import { getCurrentUser } from '../api'
 import { Avatar } from '../components/Avatar'
 import { rimFor } from '../rims'
@@ -13,7 +13,7 @@ import { RulesFields } from '../components/RulesFields'
 import type { Rules } from '../rules'
 import { timeAgo, timeUntil } from '../format'
 import { useAsync, useNow } from '../hooks'
-import type { League, Member, Snipe } from '../types'
+import type { Challenge, League, Member, Snipe, User } from '../types'
 
 type Tab = 'leaderboard' | 'feed'
 
@@ -30,6 +30,15 @@ export function LeaguePage() {
     board.reload()
     feed.reload()
   }
+  // While a challenge is being voted on, keep the votes and points current as others vote.
+  const voting = feed.data?.some((s) => s.challenges.some((c) => c.status === 'pending')) ?? false
+  const { reload: reloadBoard } = board
+  const { reload: reloadFeed } = feed
+  useEffect(() => {
+    if (!voting) return
+    const id = setInterval(() => { reloadBoard(); reloadFeed() }, 5000)
+    return () => clearInterval(id)
+  }, [voting, reloadBoard, reloadFeed])
 
   if (league.error) return <p className="error">{league.error}</p>
 
@@ -74,9 +83,11 @@ function LeagueRulesLine({ league }: { league: League }) {
     `${league.pointsPerSnipe} pts per snipe`,
     league.bountyBonusPoints > 0 && `bounty +${league.bountyBonusPoints}`,
     league.kingBonusPoints > 0 && `king +${league.kingBonusPoints}`,
+    league.headshotBonusPoints > 0 && `headshot +${league.headshotBonusPoints}`,
     `${league.cooldownMinutes} min immunity`,
     league.shooterCooldownMinutes > 0 && `${league.shooterCooldownMinutes} min sniper cooldown`,
     `bounty switches every ${league.bountyHours}h`,
+    `challenges decided by ${league.challengeVotes} vote${league.challengeVotes === 1 ? '' : 's'}`,
   ].filter(Boolean)
   return (
     <p className="muted small league-meta">
@@ -94,6 +105,8 @@ function RulesEditor({ league, onSaved }: { league: League; onSaved: () => void 
     bountyBonusPoints: league.bountyBonusPoints,
     kingBonusPoints: league.kingBonusPoints,
     bountyHours: league.bountyHours,
+    headshotBonusPoints: league.headshotBonusPoints,
+    challengeVotes: league.challengeVotes,
   }
   const [open, setOpen] = useState(false)
   const [rules, setRules] = useState(current)
@@ -223,9 +236,13 @@ function Feed({
               <strong>{sniper.displayName}</strong> sniped <strong>{target.displayName}</strong>
               <span className="muted small"> · {timeAgo(s.createdAt)}</span>
             </p>
-            <span className="snipe-points">{s.status === 'reversed' ? 'Reversed' : `+${s.points}`}</span>
+            <span className="snipe-points">
+              {s.headshot && s.status !== 'reversed' && <span className="badge badge-headshot">Headshot</span>}
+              {s.status === 'reversed' ? 'Reversed' : `+${s.points}`}
+            </span>
             {s.photoUrl && <SnipePhoto src={s.photoUrl} crosshair={s.crosshair} />}
-            <ChallengeControls leagueId={leagueId} snipe={s} currentUserId={currentUserId} onChange={onChange} />
+            <ChallengeControls leagueId={leagueId} snipe={s} userById={userById} currentUserId={currentUserId}
+              onChange={onChange} />
           </li>
         )
       })}
@@ -249,34 +266,42 @@ function SnipePhoto({ src, crosshair }: { src: string; crosshair?: string | null
 }
 
 /**
- * The player who was hit can challenge a snipe; anyone else in the league (not the
- * shooter or the target) can then approve the challenge, which reverses the snipe.
+ * Challenges on a snipe and the league's votes on them. The player who was hit can
+ * challenge to have it reversed; the shooter can claim it was a headshot. Everyone else
+ * votes yes or no; whichever side reaches the league's vote count first wins.
  */
 function ChallengeControls({
   leagueId,
   snipe,
+  userById,
   currentUserId,
   onChange,
 }: {
   leagueId: string
   snipe: Snipe
+  userById: Map<string, User>
   currentUserId?: string
   onChange: () => void
 }) {
-  const [writing, setWriting] = useState(false)
+  const [writing, setWriting] = useState<Challenge['kind'] | null>(null)
   const [reason, setReason] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const isTarget = currentUserId === snipe.targetId
-  const isReviewer = Boolean(currentUserId) && !isTarget && currentUserId !== snipe.sniperId
+  const isShooter = currentUserId === snipe.sniperId
+  const isVoter = Boolean(currentUserId) && !isTarget && !isShooter
+  const has = (kind: Challenge['kind']) => snipe.challenges.some((c) => c.kind === kind)
+  const canReverse = isTarget && snipe.status !== 'reversed' && !has('reverse')
+  const canClaimHeadshot = isShooter && snipe.status !== 'reversed' && !snipe.headshot && !has('headshot')
 
   async function run(action: () => Promise<unknown>) {
     setBusy(true)
     setError(null)
     try {
       await action()
-      setWriting(false)
+      setWriting(null)
+      setReason('')
       onChange()
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
@@ -292,18 +317,41 @@ function ChallengeControls({
 
   return (
     <div className="feed-challenge">
-      {snipe.status === 'challenged' && (
-        <p className="small">
-          <span className="badge badge-challenged">Challenged</span> “{snipe.challengeReason}”
-        </p>
-      )}
-      {snipe.status === 'reversed' && snipe.challengeReason && (
-        <p className="muted small">Reversed after challenge: “{snipe.challengeReason}”</p>
-      )}
+      {snipe.challenges.map((c) => (
+        <div key={c.id} className={`challenge challenge-${c.status}`}>
+          <p className="small">
+            <strong>{userById.get(c.challengerId)?.displayName ?? 'Someone'}</strong>
+            {c.kind === 'reverse' ? ' challenged this snipe' : ' says it was a headshot'}: “{c.reason}”
+          </p>
+          <p className="muted small">
+            {c.status === 'pending' && <>
+              <span className="badge badge-challenged">Voting</span>{' '}
+              {c.yesVotes} yes · {c.noVotes} no · {c.votesNeeded} vote{c.votesNeeded === 1 ? '' : 's'} either way decides it
+            </>}
+            {c.status === 'approved' && (c.kind === 'reverse'
+              ? 'Passed: snipe reversed and points given back.'
+              : 'Passed: counted as a headshot, bonus added.')}
+            {c.status === 'rejected' && `Voted down (${c.yesVotes} yes, ${c.noVotes} no): the snipe stands as it was.`}
+          </p>
+          {c.status === 'pending' && isVoter && (
+            <div className="vote-buttons" role="group" aria-label="Your vote">
+              {([true, false] as const).map((approve) => {
+                const chosen = c.myVote === (approve ? 'yes' : 'no')
+                return (
+                  <button key={String(approve)} className={chosen ? 'button button-primary' : 'button'} disabled={busy}
+                    aria-pressed={chosen} onClick={() => void run(() => voteOnChallenge(leagueId, c.id, approve))}>
+                    {approve ? 'Yes' : 'No'}
+                  </button>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      ))}
 
-      {snipe.status === 'valid' && isTarget && !writing && (
-        <button className="link-button small" onClick={() => setWriting(true)}>
-          Challenge this snipe
+      {!writing && (canReverse || canClaimHeadshot) && (
+        <button className="link-button small" onClick={() => setWriting(canReverse ? 'reverse' : 'headshot')}>
+          {canReverse ? 'Challenge this snipe' : 'Challenge: it was a headshot'}
         </button>
       )}
       {writing && (
@@ -311,7 +359,7 @@ function ChallengeControls({
           <input
             value={reason}
             onChange={(e) => setReason(e.target.value)}
-            placeholder="Why doesn't it count?"
+            placeholder={writing === 'reverse' ? "Why doesn't it count?" : 'Why was it a headshot?'}
             maxLength={500}
             required
             autoFocus
@@ -319,15 +367,10 @@ function ChallengeControls({
           <button className="button button-primary" disabled={busy || !reason.trim()}>
             {busy ? 'Sending…' : 'Challenge'}
           </button>
-          <button type="button" className="button" onClick={() => setWriting(false)}>
+          <button type="button" className="button" onClick={() => setWriting(null)}>
             Cancel
           </button>
         </form>
-      )}
-      {snipe.status === 'challenged' && isReviewer && (
-        <button className="button" disabled={busy} onClick={() => void run(() => approveChallenge(leagueId, snipe.id))}>
-          {busy ? 'Approving…' : 'Approve challenge (reverse snipe)'}
-        </button>
       )}
       {error && <p className="error small">{error}</p>}
     </div>

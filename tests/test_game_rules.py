@@ -1,4 +1,4 @@
-"""game.py rules in the league API: bounty rotation timing and reversal-safe timers."""
+"""game.py rules in the league API: bounty rotation timing, reversal-safe timers, and challenge votes."""
 from datetime import datetime, timedelta
 import unittest
 from unittest.mock import patch
@@ -49,6 +49,14 @@ class GameRulesTests(unittest.TestCase):
     def snipe(self, lid, shooter, target, minutes):
         return self.at(minutes, api.submit_snipe, lid, api.SnipeInput(targetId=target.id), self.session, shooter)
 
+    def challenge(self, lid, snipe, player, reason='Missed'):
+        return api.challenge_snipe(lid, int(snipe['id']), api.ChallengeInput(reason=reason), self.session, player)
+
+    def vote(self, lid, challenged, voter, approve=True, minutes=0, kind=None):
+        challenge = next(c for c in challenged['challenges'] if kind in (None, c['kind']))
+        return self.at(minutes, api.vote_on_challenge, lid, int(challenge['id']), api.VoteInput(approve=approve),
+                       self.session, voter)
+
     def board(self, lid, minutes):
         rows = self.at(minutes, api.leaderboard, lid, self.session, self.players[0])
         return {row['user']['displayName']: row for row in rows}
@@ -59,8 +67,8 @@ class GameRulesTests(unittest.TestCase):
         first = self.snipe(lid, alice, bob, 0)
         self.snipe(lid, carol, bob, 20)    # Bob's immunity from the first hit has expired
         self.snipe(lid, alice, carol, 30)  # Alice's shooter cooldown has expired
-        api.challenge_snipe(lid, int(first['id']), api.ChallengeInput(reason='Missed'), self.session, bob)
-        self.at(32, api.approve_challenge, lid, int(first['id']), self.session, dave)
+        challenged = self.challenge(lid, first, bob)
+        self.vote(lid, challenged, dave, minutes=32)
 
         board = self.board(lid, 33)
         self.assertEqual(board['Bob']['cooldownUntil'], '2026-10-24T12:35:00Z')        # Carol's hit at :20
@@ -70,11 +78,11 @@ class GameRulesTests(unittest.TestCase):
         self.assertEqual(error.exception.status_code, 409)
 
     def test_reversing_the_only_snipe_clears_both_timers(self):
-        alice, bob, _, dave = self.players
+        alice, bob, carol, dave = self.players
         lid = self.league(self.players)
         hit = self.snipe(lid, alice, bob, 0)
-        api.challenge_snipe(lid, int(hit['id']), api.ChallengeInput(reason='Missed'), self.session, bob)
-        self.at(1, api.approve_challenge, lid, int(hit['id']), self.session, dave)
+        challenged = self.challenge(lid, hit, bob)
+        self.vote(lid, challenged, dave, minutes=1)
         board = self.board(lid, 2)
         self.assertIsNone(board['Bob']['cooldownUntil'])
         self.assertIsNone(board['Alice']['shooterCooldownUntil'])
@@ -102,3 +110,132 @@ class GameRulesTests(unittest.TestCase):
         board = self.board(lid, 1)
         self.assertTrue(board[shooter.display_name]['isKing'])
         self.assertEqual(board[target.display_name]['points'], -1)
+
+    def test_one_yes_vote_reverses_and_restores_scores(self):
+        alice, bob, carol, dave = self.players
+        lid = self.league(self.players, pointsPerSnipe=10)
+        hit = self.snipe(lid, alice, bob, 0)
+        self.assertEqual(self.board(lid, 1)['Alice']['points'], 10)
+        self.assertEqual(self.board(lid, 1)['Bob']['points'], -1)
+        challenged = self.challenge(lid, hit, bob)
+        self.assertEqual(challenged['challenges'][0]['votesNeeded'], 1)  # the default
+        passed = self.vote(lid, challenged, carol)
+        self.assertEqual(passed['status'], 'reversed')
+        self.assertEqual(passed['challenges'][0]['status'], 'approved')
+        self.assertEqual(passed['challenges'][0]['myVote'], 'yes')
+        board = self.board(lid, 1)
+        self.assertEqual(board['Alice']['points'], 0)  # back to before the snipe
+        self.assertEqual(board['Bob']['points'], 0)
+        self.assertEqual(board['Alice']['snipes'], 0)
+
+    def test_two_vote_league_needs_two_yes_votes(self):
+        alice, bob, carol, dave = self.players
+        lid = self.league(self.players, pointsPerSnipe=10, challengeVotes=2)
+        challenged = self.challenge(lid, self.snipe(lid, alice, bob, 0), bob)
+        one = self.vote(lid, challenged, carol)
+        self.assertEqual(one['status'], 'challenged')  # one yes isn't enough
+        self.assertEqual(self.board(lid, 1)['Alice']['points'], 10)
+        self.assertEqual(self.vote(lid, challenged, dave)['status'], 'reversed')
+        self.assertEqual(self.board(lid, 1)['Alice']['points'], 0)
+
+    def test_three_vote_league_needs_three_yes_votes(self):
+        players = self.players + [self.signup('Erin')]
+        alice, bob, carol, dave, erin = players
+        lid = self.league(players, challengeVotes=3)
+        challenged = self.challenge(lid, self.snipe(lid, alice, bob, 0), bob)
+        self.vote(lid, challenged, carol)
+        self.assertEqual(self.vote(lid, challenged, dave)['status'], 'challenged')
+        self.assertEqual(self.vote(lid, challenged, erin)['status'], 'reversed')
+
+    def test_one_no_vote_rejects(self):
+        alice, bob, carol, dave = self.players
+        lid = self.league(self.players, pointsPerSnipe=10)
+        hit = self.snipe(lid, alice, bob, 0)
+        challenged = self.challenge(lid, hit, bob)
+        result = self.vote(lid, challenged, carol, approve=False)  # one vote decides it either way
+        self.assertEqual(result['status'], 'valid')
+        self.assertEqual(result['challenges'][0]['status'], 'rejected')
+        self.assertEqual(self.board(lid, 1)['Alice']['points'], 10)
+        with self.assertRaises(HTTPException) as closed:
+            self.vote(lid, challenged, dave, approve=True)
+        self.assertEqual(closed.exception.status_code, 409)
+        with self.assertRaises(HTTPException) as again:
+            self.challenge(lid, hit, bob)
+        self.assertEqual(again.exception.status_code, 409)
+
+    def test_two_no_votes_reject_a_two_vote_challenge(self):
+        players = self.players + [self.signup('Erin')]
+        alice, bob, carol, dave, erin = players
+        lid = self.league(players, challengeVotes=2)
+        challenged = self.challenge(lid, self.snipe(lid, alice, bob, 0), bob)
+        self.assertEqual(self.vote(lid, challenged, carol, approve=False)['status'], 'challenged')
+        result = self.vote(lid, challenged, dave, approve=False)
+        self.assertEqual(result['challenges'][0]['status'], 'rejected')
+
+    def test_votes_can_change_while_open(self):
+        players = self.players + [self.signup('Erin')]
+        alice, bob, carol = players[:3]
+        lid = self.league(players, challengeVotes=2)  # so one vote doesn't settle it
+        challenged = self.challenge(lid, self.snipe(lid, alice, bob, 0), bob)
+        self.vote(lid, challenged, carol, approve=False)
+        changed = self.vote(lid, challenged, carol, approve=True)
+        self.assertEqual((changed['challenges'][0]['yesVotes'], changed['challenges'][0]['noVotes']), (1, 0))
+        self.assertEqual(changed['status'], 'challenged')
+
+    def test_shooter_headshot_claim_adds_the_bonus_when_upheld(self):
+        alice, bob, carol, dave = self.players
+        lid = self.league(self.players, pointsPerSnipe=10, headshotBonusPoints=5)
+        hit = self.snipe(lid, alice, bob, 0)
+        claimed = self.challenge(lid, hit, alice, reason='That was a headshot')
+        self.assertEqual(claimed['challenges'][0]['kind'], 'headshot')
+        self.assertFalse(claimed['headshot'])
+        upheld = self.vote(lid, claimed, carol)
+        self.assertTrue(upheld['headshot'])
+        self.assertEqual(upheld['status'], 'valid')
+        self.assertEqual(upheld['points'], 15)
+        self.assertEqual(self.board(lid, 1)['Alice']['points'], 15)
+
+    def test_headshots_from_the_app_get_the_bonus(self):
+        alice, bob = self.players[:2]
+        lid = self.league([alice, bob], pointsPerSnipe=10, headshotBonusPoints=5)
+        hit = self.at(0, api.submit_snipe, lid, api.SnipeInput(targetId=bob.id, headshot=True), self.session, alice)
+        self.assertTrue(hit['headshot'])
+        self.assertEqual(hit['points'], 15)
+        with self.assertRaises(HTTPException) as already:
+            self.challenge(lid, hit, alice, reason='Headshot')
+        self.assertEqual(already.exception.status_code, 409)
+
+    def test_target_and_shooter_challenges_are_separate(self):
+        alice, bob, carol, dave = self.players
+        lid = self.league(self.players, pointsPerSnipe=10, headshotBonusPoints=5)
+        hit = self.snipe(lid, alice, bob, 0)
+        self.challenge(lid, hit, alice, reason='Headshot')
+        both = self.challenge(lid, hit, bob)
+        self.assertEqual(sorted(c['kind'] for c in both['challenges']), ['headshot', 'reverse'])
+        reversed_hit = self.vote(lid, both, carol, kind='reverse')
+        self.assertEqual(reversed_hit['status'], 'reversed')
+        self.assertEqual(self.board(lid, 1)['Alice']['points'], 0)
+
+    def test_who_can_challenge_and_vote(self):
+        alice, bob, carol, dave = self.players
+        lid = self.league(self.players)
+        hit = self.snipe(lid, alice, bob, 0)
+        with self.assertRaises(HTTPException) as outsider:
+            self.challenge(lid, hit, carol)
+        self.assertEqual(outsider.exception.status_code, 403)
+        with self.assertRaises(HTTPException) as wrong_kind:
+            api.challenge_snipe(lid, int(hit['id']), api.ChallengeInput(reason='Headshot', kind='headshot'),
+                                self.session, bob)
+        self.assertEqual(wrong_kind.exception.status_code, 403)
+        challenged = self.challenge(lid, hit, bob)
+        for player in (alice, bob):
+            with self.assertRaises(HTTPException) as own:
+                self.vote(lid, challenged, player)
+            self.assertEqual(own.exception.status_code, 403)
+
+    def test_small_league_needs_only_the_voters_it_has(self):
+        alice, bob, carol = self.players[:3]
+        lid = self.league([alice, bob, carol])
+        challenged = self.challenge(lid, self.snipe(lid, alice, bob, 0), bob)
+        self.assertEqual(challenged['challenges'][0]['votesNeeded'], 1)  # Carol is the only one who can vote
+        self.assertEqual(self.vote(lid, challenged, carol)['status'], 'reversed')

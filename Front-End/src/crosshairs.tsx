@@ -4,8 +4,9 @@ import { createPreference } from './preferences'
 /**
  * Crosshair shapes, drawn in a 24×24 box centered on (12, 12) — the aim point.
  * `hidden` ones can't be picked; the game assigns them (see LAST_PLACE).
+ * `limited` ones can only be picked, and only fire, while you're in first place.
  */
-export const CROSSHAIRS: { id: string; name: string; shape: ReactNode; hidden?: boolean }[] = [
+export const CROSSHAIRS: { id: string; name: string; shape: ReactNode; hidden?: boolean; limited?: boolean }[] = [
   {
     id: 'classic', name: 'Classic', shape: <>
       <circle cx="12" cy="12" r="8" />
@@ -74,6 +75,26 @@ CROSSHAIRS.push({
     ].join('')} />
     <path d="M12 2v4M12 18v4M2 12h4M18 12h4" />
     <circle cx="12" cy="12" r="1.5" fill="currentColor" />
+  </>,
+})
+
+/** A filled four-point star (a sparkle) centered on (x, y), `r` from its center to each tip. */
+const star = (x: number, y: number, r: number) =>
+  `M${x} ${y - r}Q${x} ${y} ${x + r} ${y}Q${x} ${y} ${x} ${y + r}Q${x} ${y} ${x - r} ${y}Q${x} ${y} ${x} ${y - r}Z`
+
+// First place's limited crosshair: the classic one with gold sparkles twinkling
+// around the ring, clear of the aim point.
+CROSSHAIRS.push({
+  id: 'sparkle', name: 'Sparkle', limited: true, shape: <>
+    <circle cx="12" cy="12" r="8" />
+    <path d="M12 2v4M12 18v4M2 12h4M18 12h4" />
+    <circle cx="12" cy="12" r="1.5" fill="currentColor" />
+    <g fill="#facc15" stroke="none">
+      <path className="sparkle" d={star(19.4, 4.6, 2.8)} />
+      <path className="sparkle" d={star(4.4, 18.8, 2)} style={{ animationDelay: '0.5s' }} />
+      <path className="sparkle" d={star(20, 18.4, 1.4)} style={{ animationDelay: '0.9s' }} />
+      <path className="sparkle" d={star(4.2, 5.2, 1.3)} style={{ animationDelay: '1.3s' }} />
+    </g>
   </>,
 })
 

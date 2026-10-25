@@ -745,6 +745,16 @@ ol {
   background: var(--easy-target-soft);
   color: var(--easy-target);
 }
+/* Profile: the last-place notice from the snipe screen, in the easy target's brown. */
+.last-place-notice {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--easy-target-soft);
+  color: var(--easy-target);
+  font-size: 0.9rem;
+  font-weight: 600;
+}
 .badge-bounty {
   background: var(--accent-soft);
   color: var(--accent);
@@ -756,6 +766,32 @@ ol {
 .badge-challenged {
   background: var(--king-soft);
   color: var(--king);
+}
+.badge-headshot {
+  margin-right: 6px;
+  background: #facc15;
+  color: #000;
+}
+/* One challenge and its votes, under the snipe it's about. */
+.challenge {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+  padding: 8px 10px;
+  border-left: 3px solid var(--king);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+.challenge-approved { border-left-color: var(--accent); }
+.challenge-rejected { border-left-color: var(--border); }
+.vote-buttons {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+.vote-buttons .button {
+  min-width: 72px;
 }
 
 .bounty-banner {
@@ -953,6 +989,36 @@ ol {
   cursor: pointer;
 }
 .sound-option.selected { border-color: var(--accent); background: var(--accent-soft); color: var(--text); }
+
+/* Limited options (first and last place only): gold, like the king's rim. */
+.crosshair-option.limited,
+.sound-option.limited { position: relative; border-style: dashed; border-color: var(--king); }
+.crosshair-option.limited.selected,
+.sound-option.limited.selected { border-style: solid; }
+.limited-tag {
+  position: absolute;
+  top: -9px;
+  right: 4px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--king);
+  color: #1a1203;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+/* The Sparkle crosshair's stars twinkle. */
+.sparkle {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: twinkle 1.6s ease-in-out infinite;
+}
+@keyframes twinkle {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(0.45) rotate(45deg); opacity: 0.55; }
+}
+@media (prefers-reduced-motion: reduce) { .sparkle { animation: none; } }
 
 /* ---------- League updates: rules inputs, photo, kill cam actions, countdown ---------- */
 .form-section {

@@ -183,8 +183,11 @@ export function preloadFart() {
   return fartLoading
 }
 
-/** `hidden` sounds can't be picked; the game assigns them (last place gets "fart"). */
-export const SHOT_SOUNDS: { id: string; name: string; play?: (ctx: BaseAudioContext) => void; hidden?: boolean }[] = [
+/**
+ * `hidden` sounds can't be picked; the game assigns them (last place gets "fart").
+ * `limited` ones can only be picked, and only play, while you're in first place.
+ */
+export const SHOT_SOUNDS: { id: string; name: string; play?: (ctx: BaseAudioContext) => void; hidden?: boolean; limited?: boolean }[] = [
   { id: 'realistic', name: 'Realistic', play: realisticShot },
   {
     id: 'classic', name: 'Classic', play: (ctx) => {
@@ -246,6 +249,25 @@ export const SHOT_SOUNDS: { id: string; name: string; play?: (ctx: BaseAudioCont
       src.connect(dry).connect(ctx.destination)
       src.connect(verb).connect(wet).connect(ctx.destination)
       src.start(ctx.currentTime, fart.start, fart.length)
+    },
+  },
+  {
+    // First place's limited gun: a bright click, then two struck bells a fifth apart
+    // and a quick glittery run up high, like light catching a diamond.
+    id: 'bling', name: 'Bling', limited: true, play: (ctx) => {
+      const t = ctx.currentTime
+      play(noise(ctx, 0.05, (p) => (1 - p) ** 3), t, 0.05, filter(ctx, 'highpass', 4000), fade(ctx, 0.35, 0.05, t))
+      // Each bell: a fundamental plus inharmonic overtones that die away faster.
+      for (const [at, f] of [[0, 1568], [0.07, 2349]] as const) {
+        for (const [ratio, level] of [[1, 0.2], [2.76, 0.07], [5.4, 0.035]] as const) {
+          const ring = 1.1 / Math.sqrt(ratio)
+          play(tone(ctx, 'sine', f * ratio, f * ratio, ring, t + at), t + at, ring, fade(ctx, level, ring, t + at))
+        }
+      }
+      ;[3136, 3951, 4699, 6272].forEach((f, i) => {
+        const at = t + 0.16 + i * 0.045
+        play(tone(ctx, 'triangle', f, f, 0.18, at), at, 0.18, fade(ctx, 0.05, 0.18, at))
+      })
     },
   },
   { id: 'off', name: 'Off' },

@@ -7,6 +7,7 @@ import { CrosshairPicker } from '../components/CrosshairPicker'
 import { SoundPicker } from '../components/SoundPicker'
 import { PageHeader } from '../components/PageHeader'
 import { useAsync } from '../hooks'
+import { rimFor } from '../rims'
 
 export function ProfilePage() {
   const navigate = useNavigate()
@@ -20,10 +21,15 @@ export function ProfilePage() {
       leagues.map(async (league) => {
         const board = await getLeaderboard(league.id)
         const index = board.findIndex((m) => m.user.id === me.id)
-        return { league, member: board[index], rank: index + 1, size: board.length }
+        return { league, member: board[index], rank: index + 1, size: board.length, rim: rimFor(board[index], board) }
       }),
     )
   }, [])
+
+  // First place in any league unlocks the limited crosshair and sound.
+  const firstPlace = stats.data?.some((s) => s.rim === 'king') ?? false
+  // Last place in a league overrides these picks there (same notice as the snipe screen).
+  const lastIn = stats.data?.filter((s) => s.rim === 'easy-target').map((s) => s.league.name) ?? []
 
   const totals = stats.data?.reduce(
     (acc, s) => ({
@@ -80,11 +86,16 @@ export function ProfilePage() {
       </ul>
 
       <h2 className="section-title">Crosshair</h2>
-      <CrosshairPicker />
+      {lastIn.length > 0 && (
+        <p className="last-place-notice">
+          You're in last place{stats.data!.length > 1 ? ` in ${lastIn.join(', ')}` : ''}: cracked crosshair and fart sound until you climb out.
+        </p>
+      )}
+      <CrosshairPicker firstPlace={firstPlace} />
 
       <h2 className="section-title">Gunshot sound</h2>
       <p className="muted small">Tap to hear it. Off mutes all game sounds.</p>
-      <SoundPicker />
+      <SoundPicker firstPlace={firstPlace} />
 
       {logoutError && <p className="error" role="alert">{logoutError}</p>}
       <button className="button button-block" disabled={signingOut} onClick={async () => {
