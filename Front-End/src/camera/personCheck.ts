@@ -67,30 +67,55 @@ function loadImage(src: string) {
   })
 }
 
-/** A head as an ellipse in photo pixels. */
-interface Head { cx: number; cy: number; rx: number; ry: number }
+/**
+ * A head zone in photo pixels: an ellipse big enough to include hair, and (when
+ * shoulders are visible) a neck line below which a shot isn't a headshot.
+ */
+interface Head { cx: number; cy: number; rx: number; ry: number; neckY?: number }
+
+/** How much the head ellipse is grown to take in hair. */
+const HAIR = 1.35
 
 /**
- * Head ellipse from pose landmarks (0 nose, 1–6 eyes, 7–8 ears, 11–12 shoulders),
+ * Head zone from pose landmarks (0 nose, 2/5 eyes, 7/8 ears, 11/12 shoulders),
  * given as normalized coordinates inside a box of the photo (x, y, w, h).
- * The face points sit low on the head, so the ellipse is taller than wide and
- * shifted up to cover the top of the skull.
+ * Works from the front (pairs of eyes/ears) and from the side (one ear and eye):
+ * in profile the ear is about the middle of the head, while from the front the face
+ * points sit low on the head, so the zone is shifted up to cover the top of the skull.
  */
 function headFrom(pose: NormalizedLandmark[], box: { x: number; y: number; w: number; h: number }): Head | null {
   const px = (i: number) => ({ x: box.x + pose[i].x * box.w, y: box.y + pose[i].y * box.h, seen: pose[i].visibility > 0.3 })
   const face = [0, 2, 5, 7, 8].map(px).filter((p) => p.seen)
   if (face.length < 2) return null
-  const dist = (a: number, b: number) => Math.hypot(px(a).x - px(b).x, px(a).y - px(b).y)
+  const dist = (a: number, b: number) => (px(a).seen && px(b).seen ? Math.hypot(px(a).x - px(b).x, px(a).y - px(b).y) : 0)
   // Several size estimates; take the largest the visible points support.
   const size = Math.max(
-    px(7).seen && px(8).seen ? dist(7, 8) * 0.65 : 0,             // ear to ear
-    px(2).seen && px(5).seen ? dist(2, 5) * 1.5 : 0,              // eye to eye
-    px(11).seen && px(12).seen ? dist(11, 12) * 0.3 : 0,          // shoulder width
+    dist(7, 8) * 0.65,                          // ear to ear (front)
+    dist(2, 5) * 1.5,                           // eye to eye (front)
+    dist(11, 12) * 0.3,                         // shoulder width
+    Math.max(dist(7, 0), dist(8, 0)) * 0.9,     // ear to nose (side)
+    Math.max(dist(7, 2), dist(8, 5)) * 1.3,     // ear to eye (side)
   )
   if (!size) return null
-  const cx = face.reduce((s, p) => s + p.x, 0) / face.length
-  const cy = face.reduce((s, p) => s + p.y, 0) / face.length
-  return { cx, cy: cy - size * 0.3, rx: size, ry: size * 1.3 }
+
+  // Seen from the side: only one ear is visible. Center on it, nudged toward the face.
+  const ears = [px(7), px(8)].filter((p) => p.seen)
+  const nose = px(0)
+  let cx: number, cy: number
+  if (ears.length === 1) {
+    cx = ears[0].x + (nose.seen ? (nose.x - ears[0].x) * 0.15 : 0)
+    cy = ears[0].y - size * 0.35
+  } else {
+    cx = face.reduce((s, p) => s + p.x, 0) / face.length
+    cy = face.reduce((s, p) => s + p.y, 0) / face.length - size * 0.3
+  }
+
+  // Neck line: comfortably above the shoulders, so neck and shoulder shots don't count.
+  const shoulders = [px(11), px(12)].filter((p) => p.seen)
+  const neckY = shoulders.length
+    ? shoulders.reduce((s, p) => s + p.y, 0) / shoulders.length - size * 0.35
+    : undefined
+  return { cx, cy, rx: size * HAIR, ry: size * 1.3 * HAIR, neckY }
 }
 
 function detectHeads(model: PoseLandmarker, source: HTMLImageElement | HTMLCanvasElement,
@@ -145,7 +170,8 @@ export async function checkPerson(photo: string): Promise<PersonCheck> {
     // pose model we just can't call headshots; hit / miss still works.
     const heads = posing ? findHeads(posing, img, crop, { x: left, y: top, w: side, h: side }) : []
     const aimX = img.width / 2, aimY = img.height / 2
-    const headshot = hit && heads.some((h) => ((aimX - h.cx) / h.rx) ** 2 + ((aimY - h.cy) / h.ry) ** 2 <= 1)
+    const headshot = hit && heads.some((h) =>
+      ((aimX - h.cx) / h.rx) ** 2 + ((aimY - h.cy) / h.ry) ** 2 <= 1 && (h.neckY === undefined || aimY <= h.neckY))
 
     // Paint detected people (and heads) onto the photo so the player can see what counted.
     const tint = document.createElement('canvas')
@@ -162,10 +188,18 @@ export async function checkPerson(photo: string): Promise<PersonCheck> {
     ctx.drawImage(tint, left, top, side, side)
     ctx.strokeStyle = HEAD_COLOR
     ctx.lineWidth = Math.max(2, short / 200)
+    // Outline exactly what counts as a headshot: the hair-inclusive ellipse, cut at the neck.
     for (const h of heads) {
+      ctx.save()
+      if (h.neckY !== undefined) {
+        ctx.beginPath()
+        ctx.rect(0, 0, img.width, h.neckY)
+        ctx.clip()
+      }
       ctx.beginPath()
       ctx.ellipse(h.cx, h.cy, h.rx, h.ry, 0, 0, Math.PI * 2)
       ctx.stroke()
+      ctx.restore()
     }
 
     return { hit, headshot, highlighted: out.toDataURL('image/jpeg', 0.85) }
