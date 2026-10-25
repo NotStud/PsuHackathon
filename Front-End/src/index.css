@@ -854,3 +854,17 @@ ol {
 }
 .shot-verdict.hit { background: #16a34a; }
 .shot-verdict.miss { background: var(--accent); }
+.highlight-toggle {
+  position: absolute;
+  right: 10px;
+  bottom: 38px;
+  padding: 4px 10px;
+  border: 1px solid rgb(255 255 255 / 0.5);
+  border-radius: 999px;
+  background: rgb(0 0 0 / 0.55);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.highlight-toggle.on { border-color: #22c55e; color: #4ade80; }
