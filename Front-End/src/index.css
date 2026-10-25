@@ -745,7 +745,6 @@ ol {
   background: var(--easy-target-soft);
   color: var(--easy-target);
 }
-.badge-easy-target .badge-l { font-weight: 900; }
 .badge-bounty {
   background: var(--accent-soft);
   color: var(--accent);

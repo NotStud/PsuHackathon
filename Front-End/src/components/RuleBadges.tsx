@@ -22,8 +22,8 @@ export function RuleBadges({ member, league, members }: {
       )}
       {rimFor(member, members) === 'easy-target' && (
         <span className="badge badge-easy-target" title="Last place: the easiest target in the league">
-          <span className="badge-l" aria-hidden>L</span>
-          Easy target
+          <TargetIcon width={14} height={14} />
+          Easy Target
         </span>
       )}
       {member.isBounty && (

@@ -19,7 +19,7 @@ export function Avatar({ user, size = 40, rim }: { user: User; size?: number; ri
 
   // The rim is drawn around the face without changing its size, so rows stay aligned.
   return (
-    <span className={`avatar-frame avatar-frame-${rim}`} title={rim === 'king' ? 'King: first place' : 'Easy target: last place'}
+    <span className={`avatar-frame avatar-frame-${rim}`} title={rim === 'king' ? 'King: first place' : 'Easy Target: last place'}
       style={{ width: size, height: size, '--rim': `${Math.max(2, Math.round(size * 0.07))}px` } as CSSProperties}>
       {face}
       {rim === 'king' && (
