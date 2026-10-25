@@ -138,21 +138,35 @@ function LeaveOrDelete({ league, isCreator }: { league: League; isCreator: boole
   )
 }
 
+/** The join code and points per snipe at a glance; tap Rules for the full list. */
 function LeagueRulesLine({ league }: { league: League }) {
-  const parts = [
-    `${league.pointsPerSnipe} pts per snipe`,
-    league.bountyBonusPoints > 0 && `bounty +${league.bountyBonusPoints}`,
-    league.kingBonusPoints > 0 && `king +${league.kingBonusPoints}`,
-    league.headshotBonusPoints > 0 && `headshot +${league.headshotBonusPoints}`,
-    `${league.cooldownMinutes} min immunity`,
-    league.shooterCooldownMinutes > 0 && `${league.shooterCooldownMinutes} min sniper cooldown`,
-    `bounty switches every ${league.bountyHours}h`,
-    `challenges pass at ${league.challengeVotes} yes vote${league.challengeVotes === 1 ? '' : 's'}`,
-  ].filter(Boolean)
+  const bonus = (points: number) => (points > 0 ? `+${points}` : 'Off')
+  const rules: [string, string][] = [
+    ['Points per snipe', String(league.pointsPerSnipe)],
+    ['Headshot bonus', bonus(league.headshotBonusPoints)],
+    ['King bonus', bonus(league.kingBonusPoints)],
+    ['Bounty bonus', bonus(league.bountyBonusPoints)],
+    ['Immunity after being sniped', `${league.cooldownMinutes} min`],
+    ['Sniper cooldown', league.shooterCooldownMinutes > 0 ? `${league.shooterCooldownMinutes} min` : 'None'],
+    ['Bounty moves on every', `${league.bountyHours} h`],
+    ['Challenges pass at', `${league.challengeVotes} yes vote${league.challengeVotes === 1 ? '' : 's'}`],
+  ]
   return (
-    <p className="muted small league-meta">
-      Code <span className="code">{league.joinCode}</span> · {parts.join(' · ')}
-    </p>
+    <details className="league-rules">
+      <summary>
+        <span>Code <span className="code">{league.joinCode}</span></span>
+        <span className="muted small">{league.pointsPerSnipe} pts per snipe</span>
+        <span className="league-rules-toggle small">Rules</span>
+      </summary>
+      <dl>
+        {rules.map(([name, value]) => (
+          <div key={name}>
+            <dt>{name}</dt>
+            <dd>{value}</dd>
+          </div>
+        ))}
+      </dl>
+    </details>
   )
 }
 
