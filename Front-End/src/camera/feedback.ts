@@ -174,48 +174,49 @@ export const SHOT_SOUNDS: { id: string; name: string; play?: (ctx: BaseAudioCont
     },
   },
   {
-    // Last place's gun: a fart, modeled like a voice synthesizer models speech: air
-    // pushed through a flapping opening (like buzzing lips) gives a train of sharp,
-    // brassy pulses; body resonances shape them; breathy turbulence rides on each
-    // flap. The flap rate drifts and jitters, sometimes alternates strong/weak
-    // (raspy), and drops into a sputter at the end. Randomized every time.
+    // Last place's gun: a squeaky, silly fart, the embarrassing kind. Modeled like a
+    // voice synthesizer models speech: air through a tight flapping opening gives a
+    // train of pinched pulses, thin high resonances shape them, breathy air rides on
+    // each flap. The pitch whines up then down with a wobbly vibrato, and it ends in
+    // a tiny "pft" as it runs out of air. Randomized every time.
     id: 'fart', name: 'Fart', hidden: true, play: (ctx) => {
       const rate = ctx.sampleRate
-      const len = 0.75 + Math.random() * 0.35
+      const squeak = 0.5 + Math.random() * 0.25   // the squeal, in seconds
+      const pft = 0.12                            // the little "pft" at the end
+      const len = squeak + pft
       const n = Math.round(rate * len)
       const source = new Float32Array(n)
       const air = new Float32Array(n)
+      const base = 260 + Math.random() * 80
 
-      // 1. The flaps: one pulse per opening, open slowly, snap shut.
-      let f0 = 105 + Math.random() * 25
-      let drift = 0, strong = true
       for (let i = 0; i < n;) {
-        const p = i / n
-        drift += (Math.random() - 0.5) * 3
-        drift *= 0.97
-        const sputter = p > 0.72 ? (p - 0.72) / 0.28 : 0
-        const vibrato = 1 + 0.05 * Math.sin(2 * Math.PI * 5.5 * (i / rate))
-        const pitch = Math.max(28, (f0 + drift) * vibrato * (1 - 0.25 * p) * (1 - 0.6 * sputter))
-        const period = Math.round((rate / pitch) * (0.95 + Math.random() * 0.1))
-        const env = Math.min(1, i / (rate * 0.03)) * (1 - sputter) ** 0.8 * (0.85 + 0.15 * Math.sin(2 * Math.PI * 2.3 * (i / rate)))
-        // Raspy middle: alternate strong / weak flaps; in the sputter, some flaps are skipped.
-        strong = !strong
-        const amp = env * (0.85 + Math.random() * 0.3) * (p > 0.25 && p < 0.7 && !strong ? 0.6 : 1)
-        const skip = sputter > 0 && Math.random() < 0.35 * sputter
-        const open = Math.round(period * 0.55), shut = Math.round(period * 0.12)
+        const t = i / rate
+        let pitch: number, amp: number
+        if (t < squeak) {
+          // Whine up, then sag down, with a fast wobble.
+          const p = t / squeak
+          const contour = 1 + 0.45 * Math.sin(Math.PI * Math.min(1, p * 1.3)) - 0.25 * p
+          pitch = base * contour * (1 + 0.08 * Math.sin(2 * Math.PI * 8 * t))
+          amp = Math.min(1, t / 0.02) * (1 - 0.5 * p) * (0.85 + Math.random() * 0.3)
+        } else {
+          // The "pft": a few low, breathy flaps.
+          const p = (t - squeak) / pft
+          pitch = 70 - 30 * p
+          amp = 0.7 * (1 - p)
+        }
+        const period = Math.round((rate / pitch) * (0.96 + Math.random() * 0.08))
+        const open = Math.round(period * 0.4), shut = Math.round(period * 0.08)
         for (let k = 0; k < period && i + k < n; k++) {
           let flow = 0
           if (k < open) flow = 0.5 * (1 - Math.cos(Math.PI * k / open))
           else if (k < open + shut) flow = Math.cos((Math.PI / 2) * (k - open) / shut)
-          if (!skip) {
-            source[i + k] = flow * amp
-            air[i + k] = (Math.random() * 2 - 1) * flow * amp
-          }
+          source[i + k] = flow * amp
+          air[i + k] = (Math.random() * 2 - 1) * flow * amp * (t < squeak ? 0.5 : 1.5)
         }
         i += period
       }
 
-      // 2. Radiation (flow -> sound brightens it), then three body resonances in parallel.
+      // Radiation brightens it; thin, high resonances make it squeaky rather than boomy.
       const out = new Float32Array(n)
       const resonate = (x: Float32Array, freq: number, bw: number, gain: number) => {
         const r = Math.exp(-Math.PI * bw / rate), a1 = 2 * r * Math.cos(2 * Math.PI * freq / rate), a2 = -r * r
@@ -228,13 +229,11 @@ export const SHOT_SOUNDS: { id: string; name: string; play?: (ctx: BaseAudioCont
         }
       }
       const buzz = source.map((v, i) => v - (i ? source[i - 1] : 0))
-      resonate(buzz, 230 + Math.random() * 50, 90, 1)
-      resonate(buzz, 650 + Math.random() * 120, 160, 0.6)
-      resonate(buzz, 1500, 300, 0.2)
-      resonate(air, 400, 600, 0.35)
+      resonate(buzz, 650 + Math.random() * 100, 140, 1)
+      resonate(buzz, 1400 + Math.random() * 200, 220, 0.5)
+      resonate(buzz, 2800, 400, 0.15)
+      resonate(air, 500, 700, 0.4)
 
-      // 3. Normalize, add a gentle touch of saturation for grit (heavy saturation turns
-      // it into a harsh buzz), and settle around the other sounds' loudness.
       const peak = out.reduce((m, v) => Math.max(m, Math.abs(v)), 0) || 1
       for (let i = 0; i < n; i++) out[i] = (Math.tanh((out[i] / peak) * 1.6) / Math.tanh(1.6)) * 0.6
 
@@ -242,7 +241,7 @@ export const SHOT_SOUNDS: { id: string; name: string; play?: (ctx: BaseAudioCont
       buf.getChannelData(0).set(out)
       const src = ctx.createBufferSource()
       src.buffer = buf
-      play(src, ctx.currentTime, len, filter(ctx, 'lowpass', 3500))
+      play(src, ctx.currentTime, len, filter(ctx, 'lowpass', 5000))
     },
   },
   { id: 'off', name: 'Off' },
