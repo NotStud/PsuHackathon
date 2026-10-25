@@ -139,12 +139,12 @@ class Challenge(SQLModel, table=True):
     kind: str = "reverse"
     challenger_id: int = Field(foreign_key="players.id")
     reason: str
-    status: str = "pending"  # pending, approved or rejected
+    status: str = "pending"  # pending or approved ("rejected" only from the old yes/no votes)
     created_at: NaiveDatetime = Field(default_factory=utc_now)
     resolved_at: NaiveDatetime | None = None
 
 
-# One vote per member on a challenge; it can be changed while voting is open.
+# One yes vote per member on a challenge. (approve is always true now; older rows may be no votes.)
 class ChallengeVote(SQLModel, table=True):
     __tablename__ = "challenge_votes"
 

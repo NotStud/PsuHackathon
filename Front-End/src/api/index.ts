@@ -85,9 +85,9 @@ export const setAvatar = (avatarUrl: string | null) => request<User>('/me/avatar
 /** The target challenges to reverse a snipe; the shooter challenges to claim a headshot. */
 export const challengeSnipe = (leagueId: string, snipeId: string, reason: string) =>
   request<Snipe>(`/leagues/${leagueId}/snipes/${snipeId}/challenge`, { reason })
-/** Yes or no on a challenge; can be changed until the vote is settled. */
-export const voteOnChallenge = (leagueId: string, challengeId: string, approve: boolean) =>
-  request<Snipe>(`/leagues/${leagueId}/challenges/${challengeId}/vote`, { approve })
+/** Vote yes on a challenge (there is no no vote). */
+export const voteOnChallenge = (leagueId: string, challengeId: string) =>
+  request<Snipe>(`/leagues/${leagueId}/challenges/${challengeId}/vote`, {})
 /** requestId makes retries safe: sending the same shot twice records it once. */
 export async function submitSnipe(
   leagueId: string,

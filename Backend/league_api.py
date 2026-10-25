@@ -79,10 +79,6 @@ class ChallengeInput(BaseModel):
     kind: Optional[Literal["reverse", "headshot"]] = None
 
 
-class VoteInput(BaseModel):
-    approve: bool
-
-
 # =============================================================================
 # GAME ENGINE LOGIC (Bounty, King, and Dynamic Score Recalculation)
 # =============================================================================
@@ -276,18 +272,18 @@ def votes_needed(league: League, voters: int) -> int:
 
 
 def challenge_json(challenge: Challenge, needed: int, session: Session, viewer_id: Optional[int]):
-    votes = session.exec(select(ChallengeVote).where(ChallengeVote.challenge_id == challenge.id)).all()
-    mine = next((v.approve for v in votes if v.voter_id == viewer_id), None)
+    # Only yes votes count (votes are yes-only now; older no votes are ignored).
+    yes = session.exec(select(ChallengeVote.voter_id).where(ChallengeVote.challenge_id == challenge.id,
+                                                             ChallengeVote.approve)).all()
     return dict(
         id=str(challenge.id),
         kind=challenge.kind,
         challengerId=str(challenge.challenger_id),
         reason=challenge.reason,
         status=challenge.status,
-        yesVotes=sum(v.approve for v in votes),
-        noVotes=sum(not v.approve for v in votes),
+        yesVotes=len(yes),
         votesNeeded=needed,
-        myVote=None if mine is None else ("yes" if mine else "no"),
+        voted=viewer_id in yes,
         createdAt=challenge.created_at.isoformat() + "Z",
     )
 
@@ -593,11 +589,11 @@ def challenge_snipe(league_id: int, snipe_id: int, body: ChallengeInput, session
 
 
 @router.post("/leagues/{league_id}/challenges/{challenge_id}/vote")
-def vote_on_challenge(league_id: int, challenge_id: int, body: VoteInput, session: SessionDep, player: PlayerDep):
-    """Yes or no on a challenge from anyone but the shooter and the target. Whichever side
-    reaches the league's vote count first wins: that many yes votes pass it, that many no votes
-    vote it down (as does no longer being able to reach it). Votes can be changed until then.
-    When it passes, scores (and, for a reversal, timers) are worked out again."""
+def vote_on_challenge(league_id: int, challenge_id: int, session: SessionDep, player: PlayerDep):
+    """A yes vote on a challenge, from anyone but the shooter and the target. There is no no
+    vote: without enough yes votes the challenge stays open and the snipe stands. At the
+    league's yes-vote count it passes, and scores (and, for a reversal, timers) are worked
+    out again."""
     league = require_league(league_id, player, session)
     session.exec(select(League).where(League.id == league_id).with_for_update()).one()
     challenge = session.get(Challenge, challenge_id)
@@ -612,22 +608,17 @@ def vote_on_challenge(league_id: int, challenge_id: int, body: VoteInput, sessio
 
     vote = session.get(ChallengeVote, (challenge.id, player.id))
     if vote:
-        vote.approve = body.approve
+        vote.approve = True  # voting again changes nothing (or turns an older no vote into a yes)
     else:
-        vote = ChallengeVote(challenge_id=challenge.id, voter_id=player.id, approve=body.approve)
+        vote = ChallengeVote(challenge_id=challenge.id, voter_id=player.id, approve=True)
     session.add(vote)
     session.flush()
 
-    voters = challenge_voters(hit, session)
-    needed = votes_needed(league, len(voters))
-    votes = session.exec(select(ChallengeVote).where(ChallengeVote.challenge_id == challenge.id)).all()
-    yes = sum(v.approve for v in votes)
-    no = sum(not v.approve for v in votes)
+    needed = votes_needed(league, len(challenge_voters(hit, session)))
+    yes = len(session.exec(select(ChallengeVote).where(ChallengeVote.challenge_id == challenge.id,
+                                                       ChallengeVote.approve)).all())
     if yes >= needed:
         challenge.status = "approved"
-    elif no >= needed or len(voters) - no < needed:
-        challenge.status = "rejected"
-    if challenge.status != "pending":
         challenge.resolved_at = utc_now()
         session.add(challenge)
         session.flush()

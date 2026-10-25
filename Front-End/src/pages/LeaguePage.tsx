@@ -87,7 +87,7 @@ function LeagueRulesLine({ league }: { league: League }) {
     `${league.cooldownMinutes} min immunity`,
     league.shooterCooldownMinutes > 0 && `${league.shooterCooldownMinutes} min sniper cooldown`,
     `bounty switches every ${league.bountyHours}h`,
-    `challenges decided by ${league.challengeVotes} vote${league.challengeVotes === 1 ? '' : 's'}`,
+    `challenges pass at ${league.challengeVotes} yes vote${league.challengeVotes === 1 ? '' : 's'}`,
   ].filter(Boolean)
   return (
     <p className="muted small league-meta">
@@ -268,7 +268,8 @@ function SnipePhoto({ src, crosshair }: { src: string; crosshair?: string | null
 /**
  * Challenges on a snipe and the league's votes on them. The player who was hit can
  * challenge to have it reversed; the shooter can claim it was a headshot. Everyone else
- * votes yes or no; whichever side reaches the league's vote count first wins.
+ * can vote yes (there is no no vote): at the league's yes-vote count the challenge passes,
+ * and until then the snipe stands.
  */
 function ChallengeControls({
   leagueId,
@@ -326,24 +327,23 @@ function ChallengeControls({
           <p className="muted small">
             {c.status === 'pending' && <>
               <span className="badge badge-challenged">Voting</span>{' '}
-              {c.yesVotes} yes · {c.noVotes} no · {c.votesNeeded} vote{c.votesNeeded === 1 ? '' : 's'} either way decides it
+              {c.yesVotes} of {c.votesNeeded} yes vote{c.votesNeeded === 1 ? '' : 's'} · the snipe stands until then
             </>}
             {c.status === 'approved' && (c.kind === 'reverse'
               ? 'Passed: snipe reversed and points given back.'
               : 'Passed: counted as a headshot, bonus added.')}
-            {c.status === 'rejected' && `Voted down (${c.yesVotes} yes, ${c.noVotes} no): the snipe stands as it was.`}
+            {c.status === 'rejected' && 'Voted down: the snipe stands as it was.'}
           </p>
           {c.status === 'pending' && isVoter && (
-            <div className="vote-buttons" role="group" aria-label="Your vote">
-              {([true, false] as const).map((approve) => {
-                const chosen = c.myVote === (approve ? 'yes' : 'no')
-                return (
-                  <button key={String(approve)} className={chosen ? 'button button-primary' : 'button'} disabled={busy}
-                    aria-pressed={chosen} onClick={() => void run(() => voteOnChallenge(leagueId, c.id, approve))}>
-                    {approve ? 'Yes' : 'No'}
-                  </button>
-                )
-              })}
+            <div className="vote-buttons">
+              {c.voted ? (
+                <span className="muted small">You voted yes.</span>
+              ) : (
+                <button className="button button-primary" disabled={busy}
+                  onClick={() => void run(() => voteOnChallenge(leagueId, c.id))}>
+                  {busy ? 'Voting…' : c.kind === 'reverse' ? 'Yes, reverse it' : 'Yes, it was a headshot'}
+                </button>
+              )}
             </div>
           )}
         </div>

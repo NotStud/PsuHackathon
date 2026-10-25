@@ -94,12 +94,14 @@ export interface Challenge {
   kind: 'reverse' | 'headshot'
   challengerId: string
   reason: string
-  /** 'approved' at votesNeeded yes votes; 'rejected' at votesNeeded no votes (or once yes can't get there). */
+  /**
+   * 'approved' at votesNeeded yes votes; until then 'pending' and the snipe stands. There
+   * are no no votes; 'rejected' only comes from older yes/no voting.
+   */
   status: 'pending' | 'approved' | 'rejected'
   yesVotes: number
-  noVotes: number
   votesNeeded: number
-  /** How the current player voted, if they did. */
-  myVote: 'yes' | 'no' | null
+  /** The current player has voted yes. */
+  voted: boolean
   createdAt: string
 }
