@@ -841,17 +841,18 @@ ol {
 }
 
 /* ---------- Person check verdict on the hit photo ---------- */
-/* Top-right corner of the hit photo, just below the top bar (close button + league). */
+/* Very top-right corner, level with the close button / league picker and drawn above that bar. */
 .shot-verdict {
   position: absolute;
+  z-index: 3;
   right: 10px;
-  top: calc(env(safe-area-inset-top) + 76px);
-  padding: 3px 10px;
+  top: calc(env(safe-area-inset-top) + 24px);
+  padding: 2px 8px;
   border-radius: 999px;
   background: rgb(0 0 0 / 0.6);
-  font-size: 13px;
+  font-size: 11px;
   font-weight: 800;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.06em;
 }
 .shot-verdict.hit { background: #16a34a; }
 .shot-verdict.miss { background: var(--accent); }
