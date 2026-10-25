@@ -10,6 +10,7 @@ from typing import Annotated, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field as InputField
+from sqlalchemy import delete
 from sqlmodel import Session, not_, or_, select
 
 router = APIRouter(prefix="/api")
@@ -17,7 +18,8 @@ router = APIRouter(prefix="/api")
 
 from database import get_session
 from auth import current_player, user_json
-from models import Challenge, ChallengeVote, League, LeagueMember, LeagueShot, LeagueSnipe, Player, utc_now
+from models import (Challenge, ChallengeVote, League, LeagueMember, LeagueShot, LeagueSnipe, Player,
+                    SnipeChallenge, utc_now)
 
 SessionDep = Annotated[Session, Depends(get_session)]
 PlayerDep = Annotated[Player, Depends(current_player)]
@@ -426,6 +428,46 @@ def remove_member(league_id: int, member_id: int, session: SessionDep, player: P
     compute_league_scores_and_points(league, session)
     session.commit()
     return league_json(league, session)
+
+
+@router.post("/leagues/{league_id}/leave")
+def leave_league(league_id: int, session: SessionDep, player: PlayerDep):
+    """A player leaves a league. Their past snipes stay in its history, so points others
+    scored on them still count. The creator can't leave; they can delete the league instead."""
+    league = require_league(league_id, player, session)
+    if league_owner_id(league, session) == player.id:
+        raise HTTPException(422, "You made this league, so you can't leave it. You can delete it instead.")
+    session.exec(select(League).where(League.id == league_id).with_for_update()).one()
+    session.delete(session.get(LeagueMember, (league_id, player.id)))
+    session.flush()
+    compute_league_scores_and_points(league, session)
+    session.commit()
+    return {"left": str(league_id)}
+
+
+@router.post("/leagues/{league_id}/delete")
+def delete_league(league_id: int, session: SessionDep, player: PlayerDep):
+    """The creator deletes the league for everyone: its members, snipes, shots, challenges
+    and votes go with it."""
+    league = require_league(league_id, player, session)
+    if league_owner_id(league, session) != player.id:
+        raise HTTPException(403, "Only the league creator can delete the league.")
+    session.exec(select(League).where(League.id == league_id).with_for_update()).one()
+    snipe_ids = select(LeagueSnipe.id).where(LeagueSnipe.league_id == league_id)
+    challenge_ids = select(Challenge.id).where(Challenge.snipe_id.in_(snipe_ids))
+    # Children first, so no foreign key is left pointing at a deleted row.
+    for statement in (
+        delete(ChallengeVote).where(ChallengeVote.challenge_id.in_(challenge_ids)),
+        delete(Challenge).where(Challenge.snipe_id.in_(snipe_ids)),
+        delete(SnipeChallenge).where(SnipeChallenge.snipe_id.in_(snipe_ids)),
+        delete(LeagueShot).where(LeagueShot.league_id == league_id),
+        delete(LeagueSnipe).where(LeagueSnipe.league_id == league_id),
+        delete(LeagueMember).where(LeagueMember.league_id == league_id),
+        delete(League).where(League.id == league_id),
+    ):
+        session.execute(statement)
+    session.commit()
+    return {"deleted": str(league_id)}
 
 
 @router.get("/leagues/{league_id}")

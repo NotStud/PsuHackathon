@@ -306,6 +306,19 @@ ol {
 }
 .remove-confirm span { flex: 1 1 100%; }
 .button-danger { border-color: var(--error); background: var(--error); color: #fff; }
+.button-danger-outline { border-color: var(--error); background: transparent; color: var(--error); }
+/* Leave / delete league, at the bottom of the league page. */
+.league-exit { margin-top: 32px; }
+.exit-confirm {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--error);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+.exit-confirm p { margin: 0; }
 .row-main {
   display: flex;
   flex-direction: column;
