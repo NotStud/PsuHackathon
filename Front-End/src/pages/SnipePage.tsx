@@ -238,6 +238,7 @@ export function SnipePage() {
       {shot && <ShotReview shot={shot} check={check} look={look} />}
       {flash && <div className="snipe-flash" />}
 
+      {!shot && <div className="viewfinder-frame" aria-hidden><span /><span /><span /><span /></div>}
       <div className="snipe-top">
         <button
           className="snipe-round-button"
@@ -246,6 +247,11 @@ export function SnipePage() {
         >
           <CloseIcon />
         </button>
+        <div className="camera-heading"><span className="camera-eyebrow">SNIPER</span>
+          <span className="camera-status"><i className={started && canShoot ? 'armed' : ''} />
+            {shot ? 'Shot review' : !cameraReady ? 'Connecting camera' : started && canShoot ? 'Trigger armed' : 'Standby'}
+          </span>
+        </div>
         {league && (
           <span className="snipe-league-chip">
             {league.name}

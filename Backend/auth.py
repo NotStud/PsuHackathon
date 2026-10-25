@@ -1,13 +1,11 @@
 """Email/password accounts; credentials never appear in player responses."""
-import base64
-import binascii
 import hashlib
 import hmac
 import secrets
 from datetime import timedelta
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Response
+from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, select
@@ -19,9 +17,6 @@ router = APIRouter(prefix='/api')
 SessionDep = Annotated[Session, Depends(get_session)]
 Authorization = Annotated[str | None, Header()]
 ITERATIONS = 600_000
-# The app shrinks photos to 256x256 JPEG before upload; this leaves plenty of headroom.
-MAX_AVATAR_BYTES = 200_000
-AVATAR_TYPES = ('image/jpeg', 'image/png', 'image/webp')
 
 
 def hash_password(password: str, salt: str | None = None):
@@ -49,25 +44,7 @@ def token_hash(authorization):
 
 
 def user_json(player):
-    # The version changes with the photo, so browsers can cache it but never show a stale one.
-    avatar = (f'/api/players/{player.id}/avatar?v={hashlib.sha256(player.avatar_url.encode()).hexdigest()[:10]}'
-              if player.avatar_url else None)
-    return dict(id=str(player.id), displayName=player.display_name, avatarColor='#6366f1', avatarUrl=avatar)
-
-
-def decode_avatar(data_url):
-    """Returns (media_type, bytes) for a base64 image data URL, or raises 422."""
-    header, _, payload = data_url.partition(',')
-    media_type = header.removeprefix('data:').removesuffix(';base64')
-    if not header.startswith('data:') or not header.endswith(';base64') or media_type not in AVATAR_TYPES:
-        raise HTTPException(422, 'The photo must be a JPEG, PNG or WebP image.')
-    try:
-        image = base64.b64decode(payload, validate=True)
-    except binascii.Error:
-        raise HTTPException(422, 'The photo could not be read.')
-    if len(image) > MAX_AVATAR_BYTES:
-        raise HTTPException(413, 'The photo is too large.')
-    return media_type, image
+    return dict(id=str(player.id), displayName=player.display_name, avatarColor='#6366f1')
 
 
 def account_session(session, authorization):
@@ -198,27 +175,3 @@ def logout(session: SessionDep, authorization: Authorization = None):
     return dict(message='Signed out')
 
 
-class AvatarInput(BaseModel):
-    # None removes the photo.
-    avatarUrl: str | None = Field(default=None, max_length=MAX_AVATAR_BYTES * 2)
-
-
-@router.post('/me/avatar')
-def set_avatar(body: AvatarInput, session: SessionDep, player: Annotated[Player, Depends(current_player)]):
-    if body.avatarUrl is not None:
-        decode_avatar(body.avatarUrl)
-    player.avatar_url = body.avatarUrl
-    session.add(player)
-    session.commit()
-    session.refresh(player)
-    return user_json(player)
-
-
-# Public so <img> tags can load it without an auth header; it only ever shows a profile photo.
-@router.get('/players/{player_id}/avatar')
-def get_avatar(player_id: int, session: SessionDep):
-    player = session.get(Player, player_id)
-    if not player or not player.avatar_url:
-        raise HTTPException(404, 'No profile photo.')
-    media_type, image = decode_avatar(player.avatar_url)
-    return Response(image, media_type=media_type, headers={'Cache-Control': 'public, max-age=31536000, immutable'})

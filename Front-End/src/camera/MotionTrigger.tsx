@@ -56,7 +56,7 @@ export function MotionTrigger({ started, onStart, armed, onFire }: {
   if (!started) {
     return (
       <div className="motion-trigger">
-        <button className="button button-primary button-block" disabled={!armed} onClick={() => void start()}>
+        <button className="button button-primary button-block start-button" disabled={!armed} onClick={() => void start()}>
           Start
         </button>
         {error && <p role="alert">{error}</p>}

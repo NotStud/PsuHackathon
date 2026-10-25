@@ -37,7 +37,7 @@ export function LoginPage() {
     <div className="login">
       <div className="login-brand">
         <span className="login-logo"><CrosshairIcon width={48} height={48} /></span>
-        <h1>Snipe</h1>
+        <h1>Sniped</h1>
         <p className="muted">Sign in to keep your leagues and scores across devices.</p>
       </div>
       <form className="form" onSubmit={handleSubmit}>

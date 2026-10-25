@@ -2,6 +2,7 @@ import { useRef, useState, type ChangeEvent } from 'react'
 import { setAvatar } from '../api'
 import type { User } from '../types'
 import { Avatar } from './Avatar'
+import { CameraIcon } from './Icons'
 
 const SIZE = 256
 
@@ -59,7 +60,11 @@ export function AvatarEditor({ user, onChange }: { user: User; onChange: () => v
 
   return (
     <div className="avatar-editor">
-      <Avatar user={user} size={96} />
+      <div className="profile-avatar-wrap">
+        <Avatar user={user} size={96} />
+        <button type="button" className="avatar-camera" disabled={busy} aria-label="Change profile photo"
+          onClick={() => inputRef.current?.click()}><CameraIcon width={15} height={15} /></button>
+      </div>
       <div className="avatar-editor-buttons">
         <button type="button" className="button" disabled={busy} onClick={() => inputRef.current?.click()}>
           {busy ? 'Saving…' : user.avatarUrl ? 'Change photo' : 'Add profile photo'}
